@@ -91,8 +91,14 @@ macro_rules! assert_query {
     }
 }
 
+/// TODO import from main crate
 macro_rules! canon {
     ($deps:ident, $($x:tt)*) => {
         $deps.api.canonical_address($($x)*).unwrap();
     }
+}
+
+/// TODO import from main crate
+macro_rules! SIENNA {
+    ($x:expr) => { Uint128::from($x as u128 * ONE_SIENNA) }
 }

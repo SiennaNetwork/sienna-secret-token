@@ -5,7 +5,7 @@ use serde::ser::Serialize;
 
 use sienna_mgmt as mgmt;
 use mgmt::schedule::SCHEDULE;
-use mgmt::types::{DAY, MONTH};
+use mgmt::types::{DAY, MONTH, ONE_SIENNA};
 
 use cosmwasm_std::{
     coins, StdError, HumanAddr, Api, Uint128,
@@ -111,7 +111,7 @@ kukumba!(
     given "the contract is not yet launched" {
         harness!(deps; ALICE, BOB);
 
-        let configured_claim_amount: Uint128 = Uint128::from(200u128);
+        let configured_claim_amount: Uint128 = SIENNA!(200u128);
         let r = vec![(canon!(deps, &BOB), configured_claim_amount)];
         let _ = tx(&mut deps,
             mock_env(0, 0, &ALICE),
@@ -178,7 +178,7 @@ kukumba!(
                 messages: vec![
                     snip20::handle::HandleMsg::Transfer {
                         recipient: PREDEF.clone(),
-                        amount:    Uint128::from(75000u128),
+                        amount:    SIENNA!(75000u128),
                         padding:   None
                     }.to_cosmos_msg(
                         256,
@@ -205,7 +205,7 @@ kukumba!(
     then "the contract should transfer more funds" {
         let msg = snip20::handle::HandleMsg::Transfer {
             recipient: PREDEF.clone(),
-            amount:    Uint128::from(75000u128),
+            amount:    SIENNA!(75000u128),
             padding:   None
         }.to_cosmos_msg(
             256,
@@ -263,7 +263,7 @@ kukumba!(
 
     when "the admin sets the recipients"
     then "the recipients should be updated" {
-        let r1 = vec![(canon!(deps, &BOB), Uint128::from(100u128))];
+        let r1 = vec![(canon!(deps, &BOB), SIENNA!(100u128))];
         let _ = tx(&mut deps, mock_env(1, 1, &ALICE),
             mgmt::msg::Handle::SetRecipients { recipients: r1.clone() });
         assert_query!(deps => Recipients => Recipients { recipients: r1 });
@@ -272,19 +272,24 @@ kukumba!(
     when "the admin tries to set the recipients above the total"
     then "an error should be returned"
     and  "the recipients should not be updated" {
-        let r2 = vec![(canon!(deps, &BOB), Uint128::from(10000000u128))];
+        let r2 = vec![
+            (canon!(deps, &ALICE), SCHEDULE.configurable_daily),
+            (canon!(deps, &BOB),   SCHEDULE.configurable_daily)
+        ];
         assert_tx!(deps
             => from [ALICE] at [block 4, T=4]
             => mgmt::msg::Handle::SetRecipients { recipients: r2 }
             => Err(StdError::GenericErr {
-                msg: mgmt::strings::err_allocation(10000000, 2500),
+                msg: mgmt::strings::err_allocation(
+                    (SCHEDULE.configurable_daily.multiply_ratio(2u128,1u128)).u128(),
+                    (SCHEDULE.configurable_daily).u128()),
                 backtrace: None}));
         assert_query!(deps => Recipients => Recipients { recipients: r1 });
     }
 
     when "a stranger tries to set the recipients"
     then "they should not be able to" {
-        let r3 = vec![(canon!(deps, &MALLORY), Uint128::from(100u128))];
+        let r3 = vec![(canon!(deps, &MALLORY), SIENNA!(100u128))];
         let _ = tx(&mut deps,
             mock_env(1, 1, &MALLORY),
             mgmt::msg::Handle::SetRecipients { recipients: r3 });
@@ -298,7 +303,7 @@ kukumba!(
 
     when "the admin tries to set the recipients"
     then "the recipients should be updated" {
-        let r4 = vec![(canon!(deps, &BOB), Uint128::from(200u128))];
+        let r4 = vec![(canon!(deps, &BOB), SIENNA!(200u128))];
         let _ = tx(&mut deps,
             mock_env(3, 3, &ALICE),
             mgmt::msg::Handle::SetRecipients { recipients: r4.clone() });
@@ -308,19 +313,24 @@ kukumba!(
     when "the admin tries to set the recipients above the total"
     then "an error should be returned"
     and  "the recipients should not be updated" {
-        let r5 = vec![(canon!(deps, &BOB), Uint128::from(10000000u128))];
+        let r5 = vec![
+            (canon!(deps, &BOB), SCHEDULE.configurable_daily + 1u128.into()),
+        ];
         assert_tx!(deps
             => from [ALICE] at [block 4, T=4]
             => mgmt::msg::Handle::SetRecipients { recipients: r5 }
             => Err(StdError::GenericErr {
-                msg: mgmt::strings::err_allocation(10000000, 2500),
+                msg: mgmt::strings::err_allocation(
+                    (SCHEDULE.configurable_daily + 1u128.into()).u128(),
+                    SCHEDULE.configurable_daily.u128()
+                ),
                 backtrace: None}) );
         assert_query!(deps => Recipients => Recipients { recipients: r4 });
     }
 
     when "a stranger tries to set the recipients"
     then "an error should be returned" {
-        let r6 = vec![(canon!(deps, &MALLORY), Uint128::from(100u128))];
+        let r6 = vec![(canon!(deps, &MALLORY), SIENNA!(100u128))];
         let _ = tx(&mut deps,
             mock_env(4, 4, &MALLORY),
             mgmt::msg::Handle::SetRecipients { recipients: r6 });
@@ -331,7 +341,7 @@ kukumba!(
 
     given "the contract is not yet launched" {
         harness!(deps; ALICE, BOB);
-        let configured_claim_amount = Uint128::from(200u128);
+        let configured_claim_amount = SIENNA!(200u128);
         let r = vec![(canon!(deps, &BOB), configured_claim_amount)];
         let _ = tx(&mut deps,
             mock_env(0, 0, &ALICE),
