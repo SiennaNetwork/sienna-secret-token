@@ -271,6 +271,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "dex"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema 0.10.0",
+ "cosmwasm-std",
+ "cosmwasm-storage",
+ "schemars",
+ "serde",
+ "snafu",
+]
+
+[[package]]
 name = "digest"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -818,7 +830,7 @@ dependencies = [
 
 [[package]]
 name = "sienna-mgmt"
-version = "1.0.0-rc1"
+version = "1.0.0-rc2"
 dependencies = [
  "cosmwasm-schema 0.10.0",
  "cosmwasm-std",
@@ -837,7 +849,7 @@ dependencies = [
 
 [[package]]
 name = "sienna_schedule"
-version = "1.0.0-rc1"
+version = "1.0.0-rc2"
 dependencies = [
  "cosmwasm-std",
  "schemars",
