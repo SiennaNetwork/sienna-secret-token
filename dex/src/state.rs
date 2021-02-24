@@ -8,11 +8,20 @@ pub static CONFIG_KEY: &[u8] = b"config";
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct Config {
-    pub token_addr: HumanAddr,
+    pub token_addr: ContractInfo,
     pub factory_addr: HumanAddr,
     pub name: String,
     pub symbol: String,
     pub decimals: u8
+}
+
+/// code hash and address of a contract
+#[derive(Serialize, Deserialize, JsonSchema, Clone, PartialEq, Debug)]
+pub struct ContractInfo {
+    /// contract's code hash string
+    pub code_hash: String,
+    /// contract's address
+    pub address: HumanAddr,
 }
 
 /// Returns StdResult<()> resulting from saving the config to storage
