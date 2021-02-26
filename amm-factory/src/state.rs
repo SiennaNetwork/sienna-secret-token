@@ -38,7 +38,7 @@ pub fn load_config(storage: &impl ReadonlyStorage) -> StdResult<Config> {
 /// Returns StdResult<bool> indicating whether a pair has been created before or not.
 /// Note that TokenPair(A, B) and TokenPair(B, A) is considered to be same.
 pub fn try_store_pair<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>,
+    deps: &mut Extern<S, A, Q>,
     pair: &TokenPair
 ) -> StdResult<bool> {
     let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
@@ -58,7 +58,7 @@ pub fn try_store_pair<S: Storage, A: Api, Q: Querier>(
 
     bytes.sort_by(|a, b| a.cmp(&b));
 
-    let bucket: Bucket<S, TokenPair> = Bucket::new(PREFIX_PAIR_INFO, &mut deps.storage);
+    let mut bucket: Bucket<S, TokenPair> = Bucket::new(PREFIX_PAIR_INFO, &mut deps.storage);
 
     let key = bytes.concat();
     let exists = bucket.may_load(&key)?;

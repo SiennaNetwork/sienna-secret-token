@@ -58,12 +58,14 @@ fn try_create_pair<S: Storage, A: Api, Q: Querier>(
     }
 
     let config = load_config(&deps.storage)?;
+    let log_msg = format!("{}-{}", pair.0, pair.1);
 
     Ok(HandleResponse{
         messages: vec![
             CosmosMsg::Wasm(
                 WasmMsg::Instantiate {
                     code_id: config.pair_code_id,
+                    callback_code_hash: config.pair_code_hash,
                     send: vec![],
                     label: format!(
                         "{}-{}-pair-{}-{}",
@@ -84,7 +86,7 @@ fn try_create_pair<S: Storage, A: Api, Q: Querier>(
         ],
         log: vec![
             log("action", "create_pair"),
-            log("pair", format!("{}-{}", pair.0, pair.1)),
+            log("pair", log_msg),
         ],
         data: None
     })
