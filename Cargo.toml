@@ -7,6 +7,7 @@ members = [
   "mgmt",        # smart contract that mints and vests tokens according to schedule
   "dex",         # uniswap exchange contract implementation
   "amm-factory", # factory contract for creating exchanges
+  "amm-shared",  # shared types between amm-factory and dex
   "utils"        # utility code used by contracts
 ]
 
