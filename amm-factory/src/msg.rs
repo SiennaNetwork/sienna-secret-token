@@ -1,3 +1,4 @@
+use cosmwasm_std::{HumanAddr};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use amm_shared::{TokenPair};
@@ -11,6 +12,13 @@ pub struct InitMsg {
     pub pair_code_hash: String,
 }
 
+/// Represents the address of an exchange and the pair that it manages
+#[derive(Serialize, Deserialize, JsonSchema, PartialEq, Debug, Clone)]
+pub struct Exchange {
+    pub pair: TokenPair,
+    pub address: HumanAddr
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
@@ -18,11 +26,31 @@ pub enum HandleMsg {
     CreatePair {
         pair: TokenPair
     },
+    /// Used by a newly instantiated exchange contract to send its address
+    /// for the factory to register.
+    RegisterExchange {
+        exchange: Exchange
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    // GetCount returns the current count as a json-encoded number
-    GetCount {},
+    GetExchangePair {
+        exchange_addr: HumanAddr,
+    },
+    GetPairExchangeAddress {
+        pair: TokenPair
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryResponse {
+    GetExchangePair {
+        pair: TokenPair
+    },
+    GetPairExchangeAddress {
+        address: HumanAddr
+    }
 }

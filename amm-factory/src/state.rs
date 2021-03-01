@@ -1,9 +1,11 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use cosmwasm_std::{CanonicalAddr, Storage, Querier, Api, StdResult, Extern, ReadonlyStorage};
-use cosmwasm_storage::{Bucket, ReadonlyBucket};
+use cosmwasm_std::{CanonicalAddr, HumanAddr, Storage, Querier, Api, StdResult, Extern, ReadonlyStorage, StdError};
+use cosmwasm_storage::{Bucket};
 use utils::storage::{save, load};
 use amm_shared::{TokenPair, TokenType};
+
+use crate::msg::{Exchange};
 
 pub static CONFIG_KEY: &[u8] = b"config";
 static PREFIX_PAIR_INFO: &[u8] = b"pair_info";
@@ -44,6 +46,78 @@ pub fn try_store_pair<S: Storage, A: Api, Q: Querier>(
     let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
     let addr_second = pair.1.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
 
+    let key = generate_pair_key(pair, &addr_first, &addr_second);
+
+    let mut bucket: Bucket<S, TokenPair> = Bucket::new(PREFIX_PAIR_INFO, &mut deps.storage);
+
+    let exists = bucket.may_load(&key)?;
+
+    if exists.is_some() {
+        return Ok(false);
+    }
+
+    bucket.save(&key, pair)?;
+
+    Ok(true)
+}
+
+/// Stores information about an exchange contract. Returns an `StdError` if the exchange
+/// already exists or if something else goes wrong.
+pub fn store_exchange<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    exchange: &Exchange
+) -> StdResult<()> {
+    let Exchange {
+        pair,
+        address
+    } = exchange;
+
+    let canonical = deps.api.canonical_address(&address)?;
+    let result = load(&deps.storage, canonical.as_slice());
+
+    let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
+    let addr_second = pair.1.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
+
+    let key = generate_pair_key(&pair, &addr_first, &addr_second);
+
+    match result {
+        Ok(_value) => Err(StdError::generic_err("Exchange address already exists")),
+        Err(ref err) => match err {
+            StdError::NotFound { .. } => { 
+                save(&mut deps.storage, canonical.as_slice(), &pair)?;
+                save(&mut deps.storage, &key, &canonical)
+            },
+            _ => result
+        }
+    }
+}
+
+pub fn get_pair_for_address<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    exchange_addr: &HumanAddr
+) -> StdResult<TokenPair> {
+    let canonical = deps.api.canonical_address(exchange_addr)?;
+
+    load(&deps.storage, canonical.as_slice())
+}
+
+pub fn get_address_for_pair<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    pair: &TokenPair
+) -> StdResult<HumanAddr> {
+    let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
+    let addr_second = pair.1.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
+
+    let key = generate_pair_key(&pair, &addr_first, &addr_second);
+
+    load(&deps.storage, &key)
+}
+
+fn generate_pair_key<'a>(
+    pair: &'a TokenPair,
+    addr_first: &'a CanonicalAddr,
+    addr_second: &'a CanonicalAddr
+) -> Vec<u8> {
     let mut bytes: Vec<&[u8]> = Vec::new();
 
     match &pair.0 {
@@ -58,17 +132,5 @@ pub fn try_store_pair<S: Storage, A: Api, Q: Querier>(
 
     bytes.sort_by(|a, b| a.cmp(&b));
 
-    let mut bucket: Bucket<S, TokenPair> = Bucket::new(PREFIX_PAIR_INFO, &mut deps.storage);
-
-    let key = bytes.concat();
-    let exists = bucket.may_load(&key)?;
-
-    if exists.is_some() {
-        return Ok(false);
-    }
-
-    bucket.save(&key, pair)?;
-
-    Ok(true)
+    bytes.concat()
 }
-
