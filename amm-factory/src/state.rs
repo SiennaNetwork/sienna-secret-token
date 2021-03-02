@@ -170,7 +170,7 @@ mod tests {
             )
         }
 
-        let ref deps = mock_dependencies(10, &[]);
+        let ref deps = create_deps();
 
         cmp_pair(
             deps,
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn query_correct_exchange_info() -> StdResult<()> {
-        let mut deps = mock_dependencies(10, &[]);
+        let mut deps = create_deps();
 
         let pair = TokenPair (
             TokenType::CustomToken {
