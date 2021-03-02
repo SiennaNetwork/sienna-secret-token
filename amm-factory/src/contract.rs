@@ -5,7 +5,7 @@ use cosmwasm_std::{
 use amm_shared::{TokenPair, PairInitMsg, ContractInfo};
 
 use crate::msg::{InitMsg, HandleMsg, QueryMsg, QueryResponse, Exchange};
-use crate::state::{save_config, load_config, Config, try_store_pair, store_exchange, get_address_for_pair, get_pair_for_address};
+use crate::state::{save_config, load_config, Config, pair_exists, store_exchange, get_address_for_pair, get_pair_for_address};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -57,7 +57,7 @@ fn try_create_pair<S: Storage, A: Api, Q: Querier>(
     env: &Env,
     pair: TokenPair
 ) -> StdResult<HandleResponse> {
-    if try_store_pair(deps, &pair)? == false {
+    if pair_exists(deps, &pair)? {
         return Err(StdError::generic_err("Pair already exists"));
     }
 
@@ -125,7 +125,8 @@ fn query_exchange_address<S: Storage, A: Api, Q: Querier>(
     pair: TokenPair
 ) -> StdResult<Binary> {
     let address = get_address_for_pair(deps, &pair)?;
-
+    let address = deps.api.human_address(&address)?;
+    
     to_binary(&QueryResponse::GetPairExchangeAddress {
         address
     })

@@ -1,14 +1,12 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use cosmwasm_std::{CanonicalAddr, HumanAddr, Storage, Querier, Api, StdResult, Extern, ReadonlyStorage, StdError};
-use cosmwasm_storage::{Bucket};
 use utils::storage::{save, load};
 use amm_shared::{TokenPair, TokenType};
 
 use crate::msg::{Exchange};
 
 pub static CONFIG_KEY: &[u8] = b"config";
-static PREFIX_PAIR_INFO: &[u8] = b"pair_info";
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct Config {
@@ -39,7 +37,7 @@ pub fn load_config(storage: &impl ReadonlyStorage) -> StdResult<Config> {
 
 /// Returns StdResult<bool> indicating whether a pair has been created before or not.
 /// Note that TokenPair(A, B) and TokenPair(B, A) is considered to be same.
-pub fn try_store_pair<S: Storage, A: Api, Q: Querier>(
+pub fn pair_exists<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     pair: &TokenPair
 ) -> StdResult<bool> {
@@ -48,17 +46,11 @@ pub fn try_store_pair<S: Storage, A: Api, Q: Querier>(
 
     let key = generate_pair_key(pair, &addr_first, &addr_second);
 
-    let mut bucket: Bucket<S, TokenPair> = Bucket::new(PREFIX_PAIR_INFO, &mut deps.storage);
-
-    let exists = bucket.may_load(&key)?;
-
-    if exists.is_some() {
-        return Ok(false);
+    if let Some(_) = deps.storage.get(&key) {
+        return Ok(true);
     }
 
-    bucket.save(&key, pair)?;
-
-    Ok(true)
+    Ok(false)
 }
 
 /// Stores information about an exchange contract. Returns an `StdError` if the exchange
@@ -73,25 +65,27 @@ pub fn store_exchange<S: Storage, A: Api, Q: Querier>(
     } = exchange;
 
     let canonical = deps.api.canonical_address(&address)?;
-    let result = load(&deps.storage, canonical.as_slice());
+    
+    if let Some(_) = deps.storage.get(canonical.as_slice()) {
+        return Err(StdError::generic_err("Exchange address already exists"));
+    }
 
     let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
     let addr_second = pair.1.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
 
     let key = generate_pair_key(&pair, &addr_first, &addr_second);
 
-    match result {
-        Ok(_value) => Err(StdError::generic_err("Exchange address already exists")),
-        Err(ref err) => match err {
-            StdError::NotFound { .. } => { 
-                save(&mut deps.storage, canonical.as_slice(), &pair)?;
-                save(&mut deps.storage, &key, &canonical)
-            },
-            _ => result
-        }
+    if let Some(_) = deps.storage.get(&key) {
+        return Err(StdError::generic_err("Exchange address already exists"));
     }
+
+    save(&mut deps.storage, canonical.as_slice(), &pair)?;
+    save(&mut deps.storage, &key, &canonical)?;
+
+    Ok(())
 }
 
+/// Get the exchange pair that the given contract address manages.
 pub fn get_pair_for_address<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     exchange_addr: &HumanAddr
@@ -101,10 +95,11 @@ pub fn get_pair_for_address<S: Storage, A: Api, Q: Querier>(
     load(&deps.storage, canonical.as_slice())
 }
 
+/// Get the address of an exchange contract which manages the given pair.
 pub fn get_address_for_pair<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     pair: &TokenPair
-) -> StdResult<HumanAddr> {
+) -> StdResult<CanonicalAddr> {
     let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
     let addr_second = pair.1.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
 
@@ -113,10 +108,10 @@ pub fn get_address_for_pair<S: Storage, A: Api, Q: Querier>(
     load(&deps.storage, &key)
 }
 
-fn generate_pair_key<'a>(
-    pair: &'a TokenPair,
-    addr_first: &'a CanonicalAddr,
-    addr_second: &'a CanonicalAddr
+fn generate_pair_key(
+    pair: &TokenPair,
+    addr_first: &CanonicalAddr,
+    addr_second: &CanonicalAddr
 ) -> Vec<u8> {
     let mut bytes: Vec<&[u8]> = Vec::new();
 
@@ -133,4 +128,172 @@ fn generate_pair_key<'a>(
     bytes.sort_by(|a, b| a.cmp(&b));
 
     bytes.concat()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmwasm_std::testing::{mock_dependencies};
+    use cosmwasm_std::{HumanAddr, Storage};
+
+    fn create_deps() -> Extern<impl Storage, impl Api, impl Querier> {
+        mock_dependencies(10, &[])
+    }
+
+    #[test]
+    fn generates_the_same_key_for_swapped_pairs() -> StdResult<()> {
+        fn cmp_pair<S: Storage, A: Api, Q: Querier>(
+            deps: &Extern<S, A, Q>,
+            pair: TokenPair
+        ) -> StdResult<()> {
+            let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
+            let addr_second = pair.1.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
+    
+            let key = generate_pair_key(&pair, &addr_first, &addr_second);
+    
+            let pair = swap_pair(&pair);
+    
+            let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
+            let addr_second = pair.1.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
+    
+            let swapped_key = generate_pair_key(&pair, &addr_first, &addr_second);
+    
+            assert_eq!(key, swapped_key);
+
+            Ok(())
+        }
+
+        fn swap_pair(pair: &TokenPair) -> TokenPair {
+            TokenPair(
+                pair.1.clone(),
+                pair.0.clone()
+            )
+        }
+
+        let ref deps = mock_dependencies(10, &[]);
+
+        cmp_pair(
+            deps,
+            TokenPair(
+                TokenType::CustomToken {
+                    contract_addr: HumanAddr("first_addr".into()),
+                    token_code_hash: "13123adasd".into(),
+                    viewing_key: "viewing_key1".into()
+                },
+                TokenType::CustomToken {
+                    contract_addr: HumanAddr("scnd_addr".into()),
+                    token_code_hash: "4534qwerqqw".into(),
+                    viewing_key: "viewing_key2".into()
+                }
+            )
+        )?;
+
+        cmp_pair(
+            deps,
+            TokenPair(
+                TokenType::NativeToken {
+                    denom: "test1".into()
+                },
+                TokenType::NativeToken {
+                    denom: "test2".into()
+                },
+            )
+        )?;
+
+        cmp_pair(
+            deps,
+            TokenPair(
+                TokenType::NativeToken {
+                    denom: "test3".into()
+                },
+                TokenType::CustomToken {
+                    contract_addr: HumanAddr("third_addr".into()),
+                    token_code_hash: "asd21312asd".into(),
+                    viewing_key: "viewing_key3".into()
+                }
+            )
+        )?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn query_correct_exchange_info() -> StdResult<()> {
+        let mut deps = mock_dependencies(10, &[]);
+
+        let pair = TokenPair (
+            TokenType::CustomToken {
+                contract_addr: HumanAddr("first_addr".into()),
+                token_code_hash: "13123adasd".into(),
+                viewing_key: "viewing_key1".into()
+            },
+            TokenType::CustomToken {
+                contract_addr: HumanAddr("scnd_addr".into()),
+                token_code_hash: "4534qwerqqw".into(),
+                viewing_key: "viewing_key2".into()
+            }  
+        );
+
+        let address = HumanAddr("ctrct_addr".into());
+
+        let exchange = Exchange {
+            pair: pair.clone(),
+            address: address.clone()
+        };
+
+        store_exchange(&mut deps, &exchange)?;
+
+        let retrieved_pair = get_pair_for_address(&deps, &exchange.address)?;
+        let retrieved_address = get_address_for_pair(&deps, &pair)?;
+        let retrieved_address = deps.api.human_address(&retrieved_address)?;
+        
+        assert_eq!(pair, retrieved_pair);
+        assert_eq!(address, retrieved_address);
+
+        Ok(())
+    }
+
+    #[test]
+    fn only_one_exchange_per_factory() -> StdResult<()> {
+        let ref mut deps = create_deps();
+
+        let exchange = Exchange {
+            pair: TokenPair (
+                TokenType::CustomToken {
+                    contract_addr: HumanAddr("first_addr".into()),
+                    token_code_hash: "13123adasd".into(),
+                    viewing_key: "viewing_key1".into()
+                },
+                TokenType::CustomToken {
+                    contract_addr: HumanAddr("scnd_addr".into()),
+                    token_code_hash: "4534qwerqqw".into(),
+                    viewing_key: "viewing_key2".into()
+                }  
+            ),
+            address: HumanAddr("ctrct_addr".into())
+        };
+
+        store_exchange(deps, &exchange)?;
+
+        let exchange = Exchange {
+            pair: TokenPair (
+                TokenType::CustomToken {
+                    contract_addr: HumanAddr("scnd_addr".into()),
+                    token_code_hash: "4534qwerqqw".into(),
+                    viewing_key: "viewing_key2".into()
+                },
+                TokenType::CustomToken {
+                    contract_addr: HumanAddr("first_addr".into()),
+                    token_code_hash: "13123adasd".into(),
+                    viewing_key: "viewing_key1".into()
+                },
+            ),
+            address: HumanAddr("other_addr".into())
+        };
+        
+        match store_exchange(deps, &exchange) {
+            Ok(_) => Err(StdError::generic_err("Exchange already exists")),
+            Err(_) => Ok(())
+        }
+    }
 }

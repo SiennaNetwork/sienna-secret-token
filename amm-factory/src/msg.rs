@@ -15,7 +15,9 @@ pub struct InitMsg {
 /// Represents the address of an exchange and the pair that it manages
 #[derive(Serialize, Deserialize, JsonSchema, PartialEq, Debug, Clone)]
 pub struct Exchange {
+    /// The pair that the contract manages.
     pub pair: TokenPair,
+    /// Address of the contract that manages the exchange.
     pub address: HumanAddr
 }
 
