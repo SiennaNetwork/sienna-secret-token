@@ -2,18 +2,17 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use cosmwasm_std::{CanonicalAddr, HumanAddr, Storage, Querier, Api, StdResult, Extern, ReadonlyStorage, StdError};
 use utils::storage::{save, load};
-use amm_shared::{TokenPair, TokenType};
+use amm_shared::{TokenPair, TokenType, ContractInstantiationInfo};
 
 use crate::msg::{Exchange};
 
-pub static CONFIG_KEY: &[u8] = b"config";
+const CONFIG_KEY: &[u8] = b"config";
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 pub struct Config {
-    pub token_code_id: u64,
-    pub pair_code_id: u64,
-    pub token_code_hash: String,
-    pub pair_code_hash: String,
+    pub lp_token_contract: ContractInstantiationInfo,
+    pub pair_contract: ContractInstantiationInfo,
+    pub token_addr: HumanAddr,
 }
 
 /// Returns StdResult<()> resulting from saving the config to storage

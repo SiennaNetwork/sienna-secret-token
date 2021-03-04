@@ -1,15 +1,13 @@
 use cosmwasm_std::{HumanAddr};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use amm_shared::{TokenPair};
+use amm_shared::{TokenPair, ContractInstantiationInfo};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InitMsg {
-    //TODO: IDs used for WasmMsg::Instantiate, but it doesn't say what they are about
-    pub token_code_id: u64,
-    pub pair_code_id: u64,
-    pub token_code_hash: String,
-    pub pair_code_hash: String,
+    pub lp_token_contract: ContractInstantiationInfo,
+    pub pair_contract: ContractInstantiationInfo,
+    pub token_addr: HumanAddr
 }
 
 /// Represents the address of an exchange and the pair that it manages

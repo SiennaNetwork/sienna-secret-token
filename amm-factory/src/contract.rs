@@ -13,17 +13,15 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     msg: InitMsg,
 ) -> StdResult<InitResponse> {
     let InitMsg {
-        token_code_id,
-        pair_code_id,
-        token_code_hash,
-        pair_code_hash,
+        lp_token_contract,
+        pair_contract,
+        token_addr
     } = msg;
 
     let config = Config {
-        token_code_id,
-        pair_code_id,
-        token_code_hash,
-        pair_code_hash,
+        lp_token_contract,
+        pair_contract,
+        token_addr
     };
     
     save_config(&mut deps.storage, &config)?;
@@ -68,21 +66,20 @@ fn try_create_pair<S: Storage, A: Api, Q: Querier>(
         messages: vec![
             CosmosMsg::Wasm(
                 WasmMsg::Instantiate {
-                    code_id: config.pair_code_id,
-                    callback_code_hash: config.pair_code_hash,
+                    code_id: config.pair_contract.id,
+                    callback_code_hash: config.pair_contract.code_hash,
                     send: vec![],
                     label: format!(
                         "{}-{}-pair-{}-{}",
                         pair.0,
                         pair.1,
                         env.contract.address.clone(),
-                        config.pair_code_id
+                        config.pair_contract.id
                     ),
                     msg: to_binary(
                         &PairInitMsg {
                             pair,
-                            token_code_id: config.token_code_id,
-                            token_code_hash: config.token_code_hash,
+                            lp_token_contract: config.lp_token_contract.clone(),
                             factory_info: ContractInfo {
                                 code_hash: env.contract_code_hash.clone(),
                                 address: env.contract.address.clone()
