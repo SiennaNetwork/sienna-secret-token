@@ -1,33 +1,24 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use cosmwasm_std::{HumanAddr, Uint128};
-use amm_shared::{ContractInfo, TokenPair};
+use amm_shared::{ContractInfo, TokenPair, TokenType, TokenPairAmount};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     AddLiquidity {
-        min_liquidity: Uint128,
-        max_tokens: Uint128,
-        deadline: u64 
+        input: LiquidityDeposit
     },
     RemoveLiquidity {
-        min_liquidity: Uint128,
-        min_eth: Uint128,
-        min_tokens: Uint128,
-        deadline: u64
     }
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsgResponse {
-    AddLiquidity { 
-        initial_liquidity: Uint128 
+    AddLiquidity {
     },
     RemoveLiquidity{
-        eth_amount: Uint128,
-        token_amount: Uint128
     }
 }
 
@@ -36,6 +27,7 @@ pub enum HandleMsgResponse {
 pub enum QueryMsg {
     PairInfo,
     FactoryInfo,
+    Pool
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -43,4 +35,15 @@ pub enum QueryMsg {
 pub enum QueryMsgResponse {
     PairInfo(TokenPair),
     FactoryInfo(ContractInfo),
+    Pool(TokenPairAmount)
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct LiquidityDeposit {
+    /// This is only used for validation. Since the factory should have
+    /// provided the correct exchange contract for the requested pair.
+    /// Its seems like it is more secure to check again though.
+    pub pair: TokenPair,
+    pub amount_0: Uint128,
+    pub amount_1: Uint128
 }

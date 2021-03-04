@@ -3,11 +3,11 @@ use cosmwasm_std::{
     StdResult, Storage, ReadonlyStorage, QueryResult, CosmosMsg, WasmMsg
 };
 use secret_toolkit::snip20::{register_receive_msg, set_viewing_key_msg};
-use amm_shared::{PairInitMsg, LpTokenInitMsg, TokenType};
+use amm_shared::{PairInitMsg, LpTokenInitMsg, TokenType, TokenPairAmount};
 use utils::viewing_key::ViewingKey;
 
-use crate::msg::{HandleMsg, HandleMsgResponse, QueryMsg, QueryMsgResponse};
-use crate::state::{Config, store_config, load_config, store_pair, load_pair};
+use crate::msg::{HandleMsg, HandleMsgResponse, QueryMsg, QueryMsgResponse, LiquidityDeposit};
+use crate::state::{Config, store_config, load_config};
 
 /// Pad handle responses and log attributes to blocks
 /// of 256 bytes to prevent leaking info based on response size
@@ -18,14 +18,6 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     env: Env,
     msg: PairInitMsg,
 ) -> StdResult<InitResponse> {
-
-    let config = Config {
-        factory_info: msg.factory_info,
-        lp_token_contract: msg.lp_token_contract.clone(),
-    };
-
-    store_config(&mut deps.storage, &config)?;
-    store_pair(&mut deps.storage, &msg.pair)?;
 
     let mut messages = vec![];
 
@@ -56,6 +48,15 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         callback_code_hash: msg.lp_token_contract.code_hash.clone(),
     }));
 
+    let config = Config {
+        factory_info: msg.factory_info,
+        lp_token_contract: msg.lp_token_contract.clone(),
+        pair: msg.pair,
+        contract_addr: env.contract.address
+    };
+
+    store_config(&mut deps.storage, &config)?;
+
     Ok(InitResponse {
         messages,
         log: vec![]
@@ -63,28 +64,57 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 }
 
 pub fn handle<S: Storage, A: Api, Q: Querier>(
-    _deps: &mut Extern<S, A, Q>,
-    _env: Env,
-    _msg: HandleMsg,
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
-    Ok(HandleResponse::default())
+    match msg {
+        HandleMsg::AddLiquidity { input } => add_liquidity(deps, env, input),
+        _ => unimplemented!()
+    }
 }
 
 pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     msg: QueryMsg,
 ) -> QueryResult {
-    match msg {
-        QueryMsg::PairInfo => {
-            let pair = load_pair(&deps.storage)?;
-            to_binary(&QueryMsgResponse::PairInfo(pair))
-        },
-        QueryMsg::FactoryInfo => {
-            let config = load_config(&deps.storage)?;
+    let config = load_config(&deps.storage)?;
 
-            to_binary(&QueryMsgResponse::FactoryInfo(config.factory_info))
-        },
+    match msg {
+        QueryMsg::PairInfo => to_binary(&QueryMsgResponse::PairInfo(config.pair)),
+        QueryMsg::FactoryInfo => to_binary(&QueryMsgResponse::FactoryInfo(config.factory_info)),
+        QueryMsg::Pool => query_pool_amount(deps)
     }
+}
+
+fn add_liquidity<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    deposit: LiquidityDeposit
+) -> StdResult<HandleResponse> {
+    let config = load_config(&deps.storage)?;
+
+    if config.pair != deposit.pair {
+        return Err(StdError::generic_err("The provided tokens dont match those managed by the contract."));
+    }
+
+    unimplemented!()
+}
+
+fn query_pool_amount<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>
+) -> QueryResult {
+    let config = load_config(&deps.storage)?;
+
+    let result = config.pair.query_balances(deps, config.contract_addr)?;
+
+    to_binary(&QueryMsgResponse::Pool(
+        TokenPairAmount {
+            pair: config.pair,
+            amount_0: result.0,
+            amount_1: result.1
+        }
+    ))
 }
 
 fn try_register_custom_token(
