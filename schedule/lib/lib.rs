@@ -279,10 +279,6 @@ impl Periodic {
         Error!(format!("channel {}: periodic vesting must contain at least 1 non-cliff portion",
             name))
     }
-    fn err_amount_remainder<T> (&self, name: &str, actual: u128, expected: u128) -> StdResult<T> {
-        Error!(format!("channel {}: remainder was {}, expected {}",
-            name, actual, expected))
-    }
     fn err_time_travel<T> (&self, name: &str) -> StdResult<T> {
         Error!(format!("channel {}: time of first allocations is after current time",
             name))
