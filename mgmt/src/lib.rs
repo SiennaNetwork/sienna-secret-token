@@ -284,7 +284,7 @@ contract!(
                     let elapsed   = now - *launch;
                     let schedule  = state.schedule.clone().unwrap();
                     let claimable = schedule.claimable(&claimant, elapsed)?;
-                    if claimable.len() < 1 {
+                    if claimable.is_empty() {
                         err_msg(state, &NOTHING)
                     } else {
                         let unclaimed = state.history.unclaimed(claimable.clone());
@@ -304,7 +304,7 @@ contract!(
                             println!("{:?}", &portion);
                         }
 
-                        if unclaimed.len() < 1 {
+                        if unclaimed.is_empty() {
                             err_msg(state, &NOTHING)
                         } else {
                             let mut sum: Uint128 = Uint128::zero();
