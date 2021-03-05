@@ -168,9 +168,8 @@ impl Channel {
             &self.name))
     }
     pub fn validate (&self) -> StdResult<()> {
-        match &self.periodic {
-            None => {},
-            Some(periodic) => periodic.validate(&self)?
+        if let Some(ref periodic) = self.periodic {
+            periodic.validate(&self)?;
         }
         for (_, allocations) in self.allocations.iter() {
             let mut total_portion = 0u128;
