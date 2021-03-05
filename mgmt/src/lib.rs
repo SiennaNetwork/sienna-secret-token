@@ -242,7 +242,6 @@ contract!(
         Launch () {
             require_admin!(|env, state| {
                 use crate::UNDERWAY;
-                use cosmwasm_std::Uint128;
                 match &state.schedule {
                     None => err_msg(state, &NO_SCHEDULE),
                     Some(schedule) => match &state.launched {
@@ -252,7 +251,7 @@ contract!(
                             let actions = vec![
                                 mint_msg(
                                     env.contract.address,
-                                    Uint128::from(schedule.total),
+                                    schedule.total,
                                     None, BLOCK_SIZE,
                                     state.token_hash.clone(),
                                     state.token_addr.clone()
