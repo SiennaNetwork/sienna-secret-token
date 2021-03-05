@@ -5,7 +5,7 @@
 /// * If `cliff == 0` then all the vestings are equal: `amount / n_portions`.
 /// * If `cliff > 0` then the first vesting is equal to `cliff`, and since
 ///   there's an interval of `N` after it, every other vesting is equal to
-///   `(amount - cliff) / (n_portions / 1)`.
+///   `(amount - cliff) / n_portions`.
 ///
 /// So, `if cliff > 0 { n_portions -= 1 }`.
 ///
@@ -26,7 +26,7 @@
 ///
 /// Therefore, remainders are used in the following way: while cliffs remain
 /// arbitrary, the last vesting of every channel contains the remainder of
-/// the division `(amount - cliff) / (n_portions / 1)`.
+/// the division `(amount - cliff) / n_portions`.
 
 use serde::{Serialize, Deserialize};
 use schemars::JsonSchema;
