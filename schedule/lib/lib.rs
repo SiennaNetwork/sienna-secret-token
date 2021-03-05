@@ -307,7 +307,6 @@ impl Periodic {
             if allocations.len() > 1 && cliff.u128() > 0 { return self.err_periodic_cliff_multiple(&ch.name) }
         }
         self.portion_count(&ch.name)?;
-        self.portion_size(&ch.name, ch.amount.u128())?;
         Ok(())
     }
     /// Critical section: generates `Portion`s according to the vesting ladder config.
