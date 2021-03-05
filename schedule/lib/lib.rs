@@ -296,9 +296,7 @@ impl Periodic {
     }
     pub fn portion_size (&self, name: &str, amount: u128) -> StdResult<u128> {
         let n_portions = self.portion_count(name)? as u128;
-        let mut amount = amount;
-        amount -= self.cliff.u128();
-        Ok(amount / n_portions)
+        Ok((amount - self.cliff.u128()) / n_portions)
     }
     pub fn validate (&self, ch: &Channel) -> StdResult<()> {
         let Periodic{cliff,duration,interval,..} = self;
