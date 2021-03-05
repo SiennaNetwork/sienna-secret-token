@@ -330,7 +330,7 @@ impl Periodic {
         let mut n_portions = self.portion_count(&ch.name)?;
 
         // Make sure allocations exist.
-        if ch.allocations.len() < 1 { return ch.err_no_allocations(); }
+        if ch.allocations.is_empty() { return ch.err_no_allocations(); }
 
         // Get first group of allocations.
         let (t_alloc, current_allocations) = ch.allocations.get(0).unwrap();
