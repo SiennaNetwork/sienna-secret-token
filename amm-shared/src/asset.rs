@@ -35,11 +35,21 @@ pub enum TokenType {
     CustomToken {
         contract_addr: HumanAddr,
         token_code_hash: String,
-        viewing_key: String,
+        //viewing_key: String,
     },
     NativeToken {
         denom: String,
     },
+}
+
+pub struct TokenPairIterator<'a> {
+    pair: &'a TokenPair,
+    index: u8
+}
+
+pub struct TokenPairAmountIterator<'a> {
+    pair: &'a TokenPairAmount,
+    index: u8
 }
 
 impl fmt::Display for TokenType {
@@ -79,18 +89,19 @@ impl TokenType {
     pub fn query_balance<S: Storage, A: Api, Q: Querier>(
         &self,
         deps: &Extern<S, A, Q>,
-        exchange_addr: HumanAddr
+        exchange_addr: HumanAddr,
+        viewing_key: String
     ) -> StdResult<Uint128> {
         match self {
             TokenType::NativeToken { denom } => {
                 let result = deps.querier.query_balance(exchange_addr, denom)?;
                 Ok(result.amount)
             },
-            TokenType::CustomToken { contract_addr, token_code_hash, viewing_key } => {
+            TokenType::CustomToken { contract_addr, token_code_hash } => {
                 let result = balance_query(
                     &deps.querier,
                     exchange_addr.clone(),
-                    viewing_key.clone(),
+                    viewing_key,
                     BLOCK_SIZE,
                     token_code_hash.clone(),
                     contract_addr.clone()
@@ -106,18 +117,75 @@ impl TokenPair {
     pub fn query_balances<S: Storage, A: Api, Q: Querier>(
         &self,
         deps: &Extern<S, A, Q>,
-        exchange_addr: HumanAddr
-    ) -> StdResult<(Uint128, Uint128)> {
-        let amount_0 = self.0.query_balance(deps, exchange_addr.clone())?;
-        let amount_1 = self.1.query_balance(deps, exchange_addr)?;
+        exchange_addr: HumanAddr,
+        viewing_key: String
+    ) -> StdResult<[Uint128; 2]> {
+        let amount_0 = self.0.query_balance(deps, exchange_addr.clone(), viewing_key.clone())?;
+        let amount_1 = self.1.query_balance(deps, exchange_addr, viewing_key)?;
 
-        Ok((amount_0, amount_1))
+        Ok([amount_0, amount_1])
     }
 }
 
 impl PartialEq for TokenPair {
     fn eq(&self, other: &TokenPair) -> bool {
         (self.0 == other.0 || self.0 == other.1) && (self.1 == other.0 || self.1 == other.1)
+    }
+}
+
+impl<'a> IntoIterator for &'a TokenPair {
+    type Item = &'a TokenType;
+    type IntoIter = TokenPairIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        TokenPairIterator {
+            pair: self,
+            index: 0
+        }
+    }
+}
+
+impl<'a> Iterator for TokenPairIterator<'a> {
+    type Item = &'a TokenType;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = match self.index {
+            0 => Some(&self.pair.0),
+            1 => Some(&self.pair.1),
+            _ => None
+        };
+
+        self.index += 1;
+
+        result
+    }
+}
+
+impl<'a> IntoIterator for &'a TokenPairAmount {
+    type Item = (Uint128, &'a TokenType);
+    type IntoIter = TokenPairAmountIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        TokenPairAmountIterator {
+            pair: self,
+            index: 0
+        }
+    }
+}
+
+impl<'a> Iterator for TokenPairAmountIterator<'a> {
+    type Item = (Uint128, &'a TokenType);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = match self.index {
+            0 => Some((self.pair.amount_0, &self.pair.pair.0)),
+            1 => Some((self.pair.amount_1, &self.pair.pair.1)),
+            _ => None
+        };
+
+        self.index += 1;
+
+        result
     }
 }
 
@@ -130,8 +198,7 @@ mod tests {
         let pair = TokenPair(
             TokenType::CustomToken {
                 contract_addr: "address".into(),
-                token_code_hash: "hash".into(),
-                viewing_key: "viewing_key".into(),
+                token_code_hash: "hash".into()
             },
             TokenType::NativeToken {
                 denom: "denom".into()

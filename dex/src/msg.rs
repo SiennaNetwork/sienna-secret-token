@@ -7,10 +7,12 @@ use amm_shared::{ContractInfo, TokenPair, TokenType, TokenPairAmount};
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     AddLiquidity {
-        input: LiquidityDeposit
+        input: TokenPairAmount
     },
     RemoveLiquidity {
-    }
+    },
+    /// Sent by the LP token contract so that we can record its address
+    OnLpTokenInit
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -36,14 +38,4 @@ pub enum QueryMsgResponse {
     PairInfo(TokenPair),
     FactoryInfo(ContractInfo),
     Pool(TokenPairAmount)
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct LiquidityDeposit {
-    /// This is only used for validation. Since the factory should have
-    /// provided the correct exchange contract for the requested pair.
-    /// Its seems like it is more secure to check again though.
-    pub pair: TokenPair,
-    pub amount_0: Uint128,
-    pub amount_1: Uint128
 }

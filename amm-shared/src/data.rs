@@ -15,3 +15,12 @@ pub struct ContractInstantiationInfo {
     pub code_hash: String,
     pub id: u64
 }
+
+impl Default for ContractInfo {
+    fn default() -> Self {
+        ContractInfo {
+            code_hash: "".into(),
+            address: HumanAddr::default()
+        }
+    }
+}
