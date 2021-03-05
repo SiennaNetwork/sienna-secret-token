@@ -208,7 +208,7 @@ impl Channel {
     }
     fn claimable_immediate (&self, a: &HumanAddr) -> StdResult<Vec<Portion>> {
         let mut portions = vec![];
-        match self.allocations.get(self.allocations.len()-1) {
+        match self.allocations.last() {
             None => return self.err_no_allocations(),
             Some((_, latest_allocations)) => {
                 for Allocation { addr, amount } in latest_allocations.iter() {
