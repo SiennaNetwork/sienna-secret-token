@@ -312,13 +312,13 @@ impl Periodic {
     /// Critical section: generates `Portion`s according to the vesting ladder config.
     pub fn claimable (&self, ch: &Channel, a: &HumanAddr, t: Seconds) -> StdResult<Vec<Portion>> {
 
-        let Periodic{start_at,cliff,interval,..} = self;
+        let &Periodic { start_at, cliff: Uint128(cliff), interval, .. } = self;
 
         // Interval can't be 0 (prevent infinite loop below)
-        if *interval == 0 { return self.err_zero_interval(&ch.name) }
+        if interval == 0 { return self.err_zero_interval(&ch.name) }
 
         // Nothing can be claimed before the start
-        if t < *start_at { return Ok(vec![]) }
+        if t < start_at { return Ok(vec![]) }
 
         // Now comes the part where we iterate over the time range
         // `start_at..min(t, start_at+duration)` in steps of `interval`,
@@ -326,7 +326,7 @@ impl Periodic {
         // current for the particular moment in time.
         let mut portions = vec![];
         let mut total_received: u128 = 0;
-        let mut t_cursor = *start_at;
+        let mut t_cursor = start_at;
         let mut n_portions = self.portion_count(&ch.name)?;
 
         // Make sure allocations exist.
@@ -340,7 +340,6 @@ impl Periodic {
         // If the `channel` has a `cliff`, and the first group of
         // `allocations` contains the claimant `a`, then that
         // user must receive the cliff amount.
-        let cliff = cliff.u128();
         if cliff > 0 {
             for Allocation {addr, ..} in current_allocations.iter() {
                 if addr == a {
@@ -352,7 +351,7 @@ impl Periodic {
                     // If the above is true, make the cliff amount
                     // the first portion, and advance the time.
                     let reason = format!("{}: cliff", &ch.name);
-                    portions.push(portion(cliff, a, *start_at, &reason));
+                    portions.push(portion(cliff, a, start_at, &reason));
                     t_cursor += interval;
                     n_portions += 1;
                     total_received += cliff;
