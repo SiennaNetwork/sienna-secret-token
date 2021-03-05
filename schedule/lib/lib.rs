@@ -185,11 +185,14 @@ impl Channel {
     }
     /// Allocations can be changed on the fly without affecting past vestings.
     pub fn reallocate (&mut self, t: Seconds, allocations: Vec<Allocation>) -> StdResult<()> {
-        if let Some(Periodic { cliff: Uint128(0), .. }) = self.periodic {
-            return self.err_realloc_cliff()
-        }
-        let t_min = self.allocations.iter().fold(0, |x,y|Seconds::max(x,y.0));
-        if t < t_min { return self.err_realloc_time_travel(t, t_min) }
+        match &self.periodic {
+            None => {},
+            Some(Periodic{cliff,..}) => if (*cliff).u128() > 0 {
+                return self.err_realloc_cliff()
+            }
+        };
+        let t_max = self.allocations.iter().fold(0, |x,y|Seconds::max(x,y.0));
+        if t < t_max { return self.err_realloc_time_travel(t, t_max) }
         self.allocations.push((t, allocations));
         self.validate()
     }
