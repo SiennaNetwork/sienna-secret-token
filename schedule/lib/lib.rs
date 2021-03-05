@@ -288,7 +288,7 @@ impl Periodic {
         if duration % interval > 0 { return self.err_duration_remainder(name); }
         if duration < interval { return self.err_interval_gt_duration(name); }
         let n_portions = duration / interval;
-        if *cliff > Uint128::zero() {
+        if cliff.0 > 0 {
             if n_portions < 2 { return self.err_cliff_only(name) }
             return Ok(n_portions - 1u64)
         }
