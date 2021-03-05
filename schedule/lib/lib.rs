@@ -267,10 +267,6 @@ impl Periodic {
         Error!(format!("channel {}: cliffs not supported alongside split allocations",
             name))
     }
-    fn err_periodic_remainder_multiple<T> (&self, name: &str) -> StdResult<T> {
-        Error!(format!("channel {}: remainders not supported alongside split allocations",
-            name))
-    }
     fn err_duration_remainder<T> (&self, name: &str) -> StdResult<T> {
         Error!(format!("channel {}: duration ({}s) does not divide evenly in intervals of {}s",
             name, self.duration, self.interval))
