@@ -54,9 +54,7 @@ impl Schedule {
     /// Make sure that the schedule contains valid data.
     pub fn validate (&self) -> StdResult<()> {
         let mut total = 0u128;
-        let mut pools: Vec<String> = vec![];
         for pool in self.pools.iter() {
-            pools.push(pool.name.clone());
             match pool.validate() {
                 Ok(_)  => { total += pool.total.u128() },
                 Err(e) => return Err(e)
