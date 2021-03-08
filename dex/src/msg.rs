@@ -1,27 +1,22 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use cosmwasm_std::{HumanAddr, Uint128};
-use amm_shared::{ContractInfo, TokenPair, TokenType, TokenPairAmount};
+use cosmwasm_std::{Uint128, HumanAddr};
+use amm_shared::{ContractInfo, TokenPair, TokenPairAmount};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     AddLiquidity {
-        input: TokenPairAmount
+        deposit: TokenPairAmount
     },
     RemoveLiquidity {
+        /// The amount of LP tokens burned.
+        amount: Uint128,
+        /// The account to refund the tokens to.
+        recipient: HumanAddr
     },
-    /// Sent by the LP token contract so that we can record its address
+    /// Sent by the LP token contract so that we can record its address.
     OnLpTokenInit
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum HandleMsgResponse {
-    AddLiquidity {
-    },
-    RemoveLiquidity{
-    }
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]

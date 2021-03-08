@@ -1,12 +1,13 @@
 use cosmwasm_std::{
-    to_binary, Api, Binary, Env, Extern, HandleResponse, InitResponse, Querier, StdError,
-    StdResult, Storage, ReadonlyStorage, QueryResult, CosmosMsg, WasmMsg, Uint128, log, HumanAddr
+    to_binary, Api, Env, Extern, HandleResponse, InitResponse, Querier, StdError, Coin,
+    StdResult, Storage, QueryResult, CosmosMsg, WasmMsg, Uint128, log, HumanAddr, BankMsg
 };
-use secret_toolkit::snip20::{register_receive_msg, set_viewing_key_msg, transfer_from_msg, token_info_query};
-use amm_shared::{PairInitMsg, TokenInitMsg, TokenType, TokenPairAmount, ContractInfo, Callback};
+use secret_toolkit::snip20;
+use amm_shared::{PairInitMsg, TokenInitMsg, TokenType, TokenPairAmount, ContractInfo, Callback, U256};
+use amm_shared::u256_math;
 use utils::viewing_key::ViewingKey;
 
-use crate::msg::{HandleMsg, HandleMsgResponse, QueryMsg, QueryMsgResponse};
+use crate::msg::{HandleMsg, QueryMsg, QueryMsgResponse};
 use crate::state::{Config, store_config, load_config};
 
 /// Pad handle responses and log attributes to blocks
@@ -79,9 +80,9 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        HandleMsg::AddLiquidity { input } => add_liquidity(deps, env, input),
+        HandleMsg::AddLiquidity { deposit } => add_liquidity(deps, env, deposit),
+        HandleMsg::RemoveLiquidity { amount, recipient } => remove_liquidity(deps, env, amount, recipient),
         HandleMsg::OnLpTokenInit => register_lp_token(deps, env),
-        _ => unimplemented!()
     }
 }
 
@@ -118,6 +119,11 @@ fn add_liquidity<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::generic_err("The provided tokens dont match those managed by the contract."));
     }
 
+    // Because we asserted that the provided pair and the one that is managed by the contract
+    // are identical, from here on, we must only work with the one provided (deposit.pair).
+    // This is because even though pairs with orders (A,B) and (B,A) are identical, the `amount_0` and `amount_1`
+    // variables correspond directly to the pair provided and not necessarily to the one stored. So in this case, order is important.
+
     let mut messages: Vec<CosmosMsg> = vec![];
 
     let mut pool_balances = deposit.pair.query_balances(deps, contract_addr, viewing_key.0)?;
@@ -126,7 +132,7 @@ fn add_liquidity<S: Storage, A: Api, Q: Querier>(
     for (amount, token) in deposit.into_iter() {
         match &token {
             TokenType::CustomToken { contract_addr, token_code_hash } => {
-                messages.push(transfer_from_msg(
+                messages.push(snip20::transfer_from_msg(
                     env.message.sender.clone(),
                     env.contract.address.clone(),
                     amount,
@@ -146,7 +152,177 @@ fn add_liquidity<S: Storage, A: Api, Q: Querier>(
 
     let liquidity_supply = query_liquidity(&deps.querier, &lp_token_info)?;
 
-    unimplemented!()
+    let lp_tokens = if liquidity_supply == Uint128::zero() {
+        // If the provider is minting a new pool, the number of liquidity tokens they will
+        // receive will equal sqrt(x * y), where x and y represent the amount of each token provided.
+
+        let amount_0 = U256::from(deposit.amount_0.u128());
+        let amount_1 = U256::from(deposit.amount_1.u128());
+
+        let initial_liquidity = u256_math::mul(Some(amount_0), Some(amount_1))
+            .and_then(|prod| u256_math::sqrt(prod))
+            .ok_or_else(|| {
+                StdError::generic_err(format!(
+                    "Cannot calculate sqrt(deposit_0 {} * deposit_1 {})",
+                    amount_0, amount_1
+                ))
+            })?;
+
+        Uint128(initial_liquidity.low_u128())
+    } else {
+        // When adding to an existing pool, an equal amount of each token, proportional to the
+        // current price, must be deposited. So, determine how many LP tokens are minted.
+
+        let total_share = Some(U256::from(liquidity_supply.u128()));
+
+        let amount_0 = Some(U256::from(deposit.amount_0.u128()));
+        let pool_0 = Some(U256::from(pool_balances[0].u128()));
+
+        let share_0 = u256_math::div(u256_math::mul(amount_0, total_share), pool_0).ok_or_else(|| {
+            StdError::generic_err(format!(
+                "Cannot calculate deposits[0] {} * total_share {} / pools[0].amount {}",
+                amount_0.unwrap(),
+                total_share.unwrap(),
+                pool_0.unwrap()
+            ))
+        })?;
+
+        let amount_1 = Some(U256::from(deposit.amount_1.u128()));
+        let pool_1 = Some(U256::from(pool_balances[1].u128()));
+
+        let share_1 = u256_math::div(u256_math::mul(amount_1, total_share), pool_1).ok_or_else(|| {
+            StdError::generic_err(format!(
+                "Cannot calculate deposits[1] {} * total_share {} / pools[1].amount {}",
+                amount_1.unwrap(),
+                total_share.unwrap(),
+                pool_1.unwrap()
+            ))
+        })?;
+
+        Uint128(std::cmp::min(share_0, share_1).low_u128())
+    };
+
+    messages.push(snip20::mint_msg(
+        env.message.sender,
+        lp_tokens,
+        None,
+        BLOCK_SIZE,
+        lp_token_info.code_hash,
+        lp_token_info.address,
+    )?);
+
+    Ok(HandleResponse {
+        messages,
+        log: vec![
+            log("action", "provide_liquidity"),
+            log("assets", format!("{}, {}", deposit.pair.0, deposit.pair.1)),
+            log("share", lp_tokens),
+        ],
+        data: None,
+    })
+}
+
+fn remove_liquidity<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    amount: Uint128,
+    recipient: HumanAddr
+) -> StdResult<HandleResponse> {
+    let config = load_config(&deps.storage)?;
+
+    let Config {
+        pair,
+        lp_token_info,
+        contract_addr,
+        viewing_key,
+        ..
+    } = config;
+
+    let liquidity_supply = query_liquidity(&deps.querier, &lp_token_info)?;
+    let pool_balances = pair.query_balances(deps, contract_addr, viewing_key.0)?;
+
+    // Calculate the withdrawn amount for each token in the pair - for each token X
+    // amount of X withdrawn = amount in pool for X * amount of LP tokens being burned / total liquidity pool amount
+
+    let withdraw_amount = Some(U256::from(amount.u128()));
+    let total_liquidity = Some(U256::from(liquidity_supply.u128()));
+
+    let mut pool_withdrawn: [Uint128; 2] = [ Uint128::zero(), Uint128::zero() ];
+
+    for (i, pool_amount) in pool_balances.iter().enumerate() {
+        let pool_amount = Some(U256::from(pool_amount.u128()));
+
+        let withdrawn_token_amount = u256_math::div(
+            u256_math::mul(pool_amount, withdraw_amount),
+            total_liquidity,
+        )
+        .ok_or_else(|| {
+            StdError::generic_err(format!(
+                "Cannot calculate current_pool_amount {} * withdrawn_share_amount {} / total_share {}",
+                pool_amount.unwrap(),
+                withdraw_amount.unwrap(),
+                total_liquidity.unwrap()
+            ))
+        })?;
+
+        pool_withdrawn[i] = Uint128(withdrawn_token_amount.low_u128());
+    }
+
+    let mut messages: Vec<CosmosMsg> = Vec::with_capacity(2);
+    let mut i = 0;
+
+    for token in pair.into_iter() {
+        let msg = match token {
+            TokenType::CustomToken { contract_addr, token_code_hash } => {
+                CosmosMsg::Wasm(WasmMsg::Execute {
+                    contract_addr: contract_addr.clone(),
+                    callback_code_hash: token_code_hash.to_string(),
+                    msg: to_binary(&snip20::HandleMsg::Send {
+                        recipient: recipient.clone(),
+                        amount: pool_withdrawn[i],
+                        padding: None,
+                        msg: None,
+                    })?,
+                    send: vec![]
+                })
+            },
+            TokenType::NativeToken { denom } => {            
+                CosmosMsg::Bank(BankMsg::Send {
+                    from_address: env.contract.address.clone(),
+                    to_address: recipient.clone(),
+                    amount: vec![Coin {
+                        denom: denom.to_string(),
+                        amount: pool_withdrawn[i]
+                    }],
+                })
+            }
+        };
+
+        messages.push(msg);
+
+        i += 1;
+    }
+
+    messages.push(snip20::burn_msg(
+        amount,
+        None,
+        BLOCK_SIZE,
+        lp_token_info.code_hash,
+        lp_token_info.address)?
+    );
+
+    Ok(HandleResponse {
+        messages: messages,
+        log: vec![
+            log("action", "withdraw_liquidity"),
+            log("withdrawn_share", amount.to_string()),
+            log(
+                "refund_assets",
+                format!("{}, {}", pair.0.clone(), pair.1.clone()),
+            ),
+        ],
+        data: None
+    })
 }
 
 fn query_pool_amount<S: Storage, A: Api, Q: Querier>(
@@ -166,7 +342,7 @@ fn query_pool_amount<S: Storage, A: Api, Q: Querier>(
 }
 
 fn query_liquidity(querier: &impl Querier, lp_token_info: &ContractInfo) -> StdResult<Uint128> {
-    let result = token_info_query(
+    let result = snip20::token_info_query(
         querier,
         BLOCK_SIZE,
         lp_token_info.code_hash.clone(),
@@ -197,7 +373,7 @@ fn register_lp_token<S: Storage, A: Api, Q: Querier>(
     store_config(&mut deps.storage, &config)?;
 
     Ok(HandleResponse {
-        messages: vec![register_receive_msg(
+        messages: vec![snip20::register_receive_msg(
             env.contract_code_hash,
             None,
             BLOCK_SIZE,
@@ -218,14 +394,14 @@ fn try_register_custom_token(
     if let TokenType::CustomToken { 
         contract_addr, token_code_hash, ..
     } = token {
-        messages.push(set_viewing_key_msg(
+        messages.push(snip20::set_viewing_key_msg(
             viewing_key.0.clone(),
             None,
             BLOCK_SIZE,
             token_code_hash.clone(),
             contract_addr.clone(),
         )?);
-        messages.push(register_receive_msg(
+        messages.push(snip20::register_receive_msg(
             env.contract_code_hash.clone(),
             None,
             BLOCK_SIZE,

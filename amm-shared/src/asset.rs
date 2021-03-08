@@ -114,6 +114,8 @@ impl TokenType {
 }
 
 impl TokenPair {
+    /// Returns the balance for each token in the pair. The order of the balances in returned array
+    /// correspond to the token order in the pair i.e `[ self.0 balance, self.1 balance ]`.
     pub fn query_balances<S: Storage, A: Api, Q: Querier>(
         &self,
         deps: &Extern<S, A, Q>,
@@ -123,6 +125,7 @@ impl TokenPair {
         let amount_0 = self.0.query_balance(deps, exchange_addr.clone(), viewing_key.clone())?;
         let amount_1 = self.1.query_balance(deps, exchange_addr, viewing_key)?;
 
+        // order is important
         Ok([amount_0, amount_1])
     }
 }
