@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     to_binary, Api, Env, Extern, HandleResponse, InitResponse, Querier, StdError, Coin,
-    StdResult, Storage, QueryResult, CosmosMsg, WasmMsg, Uint128, log, HumanAddr, BankMsg
+    StdResult, Storage, QueryResult, CosmosMsg, WasmMsg, Uint128, log, HumanAddr, BankMsg, Decimal
 };
 use secret_toolkit::snip20;
 use amm_shared::{PairInitMsg, TokenInitMsg, TokenType, TokenPairAmount, ContractInfo, Callback, U256};
@@ -9,6 +9,7 @@ use utils::viewing_key::ViewingKey;
 
 use crate::msg::{HandleMsg, QueryMsg, QueryMsgResponse};
 use crate::state::{Config, store_config, load_config};
+use crate::decimal_math;
 
 /// Pad handle responses and log attributes to blocks
 /// of 256 bytes to prevent leaking info based on response size
@@ -80,7 +81,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        HandleMsg::AddLiquidity { deposit } => add_liquidity(deps, env, deposit),
+        HandleMsg::AddLiquidity { deposit, slippage_tolerance } => add_liquidity(deps, env, deposit, slippage_tolerance),
         HandleMsg::RemoveLiquidity { amount, recipient } => remove_liquidity(deps, env, amount, recipient),
         HandleMsg::OnLpTokenInit => register_lp_token(deps, env),
     }
@@ -102,7 +103,8 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
 fn add_liquidity<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    deposit: TokenPairAmount
+    deposit: TokenPairAmount,
+    slippage: Option<Decimal>
 ) -> StdResult<HandleResponse> {
 
     let config = load_config(&deps.storage)?;
@@ -149,6 +151,12 @@ fn add_liquidity<S: Storage, A: Api, Q: Querier>(
 
         i += 1;
     }
+
+    assert_slippage_tolerance(
+        slippage,
+        &[ deposit.amount_0, deposit.amount_1 ],
+        &pool_balances
+    )?;
 
     let liquidity_supply = query_liquidity(&deps.querier, &lp_token_info)?;
 
@@ -408,6 +416,37 @@ fn try_register_custom_token(
             token_code_hash.clone(),
             contract_addr.clone(),
         )?);
+    }
+
+    Ok(())
+}
+
+/// The amount the price moves in a trading pair between when a transaction is submitted and when it is executed.
+/// Returns an `StdError` if the range of the expected tokens to be received is exceeded.
+fn assert_slippage_tolerance(
+    slippage: Option<Decimal>,
+    deposits: &[Uint128; 2],
+    pools: &[Uint128; 2]
+) -> StdResult<()> {
+    if slippage.is_none() {
+        return Ok(());
+    }
+
+    let one_minus_slippage_tolerance = decimal_math::decimal_subtraction(Decimal::one(), slippage.unwrap())?;
+
+    // Ensure each prices are not dropped as much as slippage tolerance rate
+    if decimal_math::decimal_multiplication(
+        Decimal::from_ratio(deposits[0], deposits[1]),
+        one_minus_slippage_tolerance,
+    ) > Decimal::from_ratio(pools[0], pools[1]) || 
+    decimal_math::decimal_multiplication(
+        Decimal::from_ratio(deposits[1], deposits[0]),
+        one_minus_slippage_tolerance,
+    ) > Decimal::from_ratio(pools[1], pools[0])
+    {
+        return Err(StdError::generic_err(
+            "Operation exceeds max splippage tolerance",
+        ));
     }
 
     Ok(())

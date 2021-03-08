@@ -1,13 +1,16 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use cosmwasm_std::{Uint128, HumanAddr};
+use cosmwasm_std::{Uint128, HumanAddr, Decimal};
 use amm_shared::{ContractInfo, TokenPair, TokenPairAmount};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     AddLiquidity {
-        deposit: TokenPairAmount
+        deposit: TokenPairAmount,
+        /// The amount the price moves in a trading pair between when a transaction is submitted and when it is executed.
+        /// Transactions that exceed this threshold will be rejected.
+        slippage_tolerance: Option<Decimal>
     },
     RemoveLiquidity {
         /// The amount of LP tokens burned.
