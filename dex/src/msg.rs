@@ -31,7 +31,11 @@ pub enum HandleMsg {
 pub enum QueryMsg {
     PairInfo,
     FactoryInfo,
-    Pool
+    Pool,
+    SwapSimulation {
+        /// The token type to swap from.
+        offer: TokenTypeAmount
+    }
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -40,4 +44,11 @@ pub enum QueryMsgResponse {
     PairInfo(TokenPair),
     FactoryInfo(ContractInfo),
     Pool(TokenPairAmount)
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+pub struct SwapSimulationResponse {
+    pub return_amount: Uint128,
+    pub spread_amount: Uint128,
+    pub commission_amount: Uint128,
 }

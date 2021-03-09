@@ -4,11 +4,14 @@ use cosmwasm_std::{
     StdResult, Storage, QueryResult, CosmosMsg, WasmMsg, Uint128, log, HumanAddr, Decimal
 };
 use secret_toolkit::snip20;
-use amm_shared::{PairInitMsg, TokenInitMsg, TokenType, TokenPairAmount, ContractInfo, Callback, U256, TokenTypeAmount, create_send_msg};
+use amm_shared::{
+    PairInitMsg, TokenInitMsg, TokenType, TokenPairAmount,
+    ContractInfo, Callback, U256, TokenTypeAmount, create_send_msg
+};
 use amm_shared::u256_math;
 use utils::viewing_key::ViewingKey;
 
-use crate::msg::{HandleMsg, QueryMsg, QueryMsgResponse};
+use crate::msg::{HandleMsg, QueryMsg, QueryMsgResponse, SwapSimulationResponse};
 use crate::state::{Config, store_config, load_config};
 use crate::decimal_math;
 
@@ -101,7 +104,8 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     match msg {
         QueryMsg::PairInfo => to_binary(&QueryMsgResponse::PairInfo(config.pair)),
         QueryMsg::FactoryInfo => to_binary(&QueryMsgResponse::FactoryInfo(config.factory_info)),
-        QueryMsg::Pool => query_pool_amount(deps, config)
+        QueryMsg::Pool => query_pool_amount(deps, config),
+        QueryMsg::SwapSimulation { offer } => swap_simulation(deps, config, offer)
     }
 }
 
@@ -394,6 +398,36 @@ fn query_liquidity(querier: &impl Querier, lp_token_info: &ContractInfo) -> StdR
     }
 
     Ok(result.total_supply.unwrap())
+}
+
+fn swap_simulation<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    config: Config,
+    offer: TokenTypeAmount
+) -> QueryResult {
+    if !config.pair.contains(&offer.token) {
+        return Err(StdError::generic_err(format!("The supplied token {}, is not managed by this contract.", offer.token)));
+    }
+
+    let pool_balance = offer.token.query_balance(deps, config.contract_addr.clone(), config.viewing_key.0.clone())?;
+
+    let amount = U256::from(pool_balance.u128()).checked_sub(U256::from(offer.amount.u128())).ok_or_else(|| {
+        StdError::generic_err("The swap amount offered is larger than pool amount.")
+    })?;
+
+    let (return_amount, spread_amount, commission_amount) = compute_swap(
+        Uint128(amount.low_u128()),
+        pool_balance,
+        offer.amount
+    )?;
+
+    Ok(to_binary(
+        &SwapSimulationResponse{
+            return_amount,
+            spread_amount,
+            commission_amount
+        }
+    )?)
 }
 
 fn register_lp_token<S: Storage, A: Api, Q: Querier>(
