@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use cosmwasm_std::{Uint128, HumanAddr, Decimal};
-use amm_shared::{ContractInfo, TokenPair, TokenPairAmount};
+use amm_shared::{ContractInfo, TokenPair, TokenPairAmount, TokenTypeAmount};
 
 #[derive(Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -17,6 +17,10 @@ pub enum HandleMsg {
         amount: Uint128,
         /// The account to refund the tokens to.
         recipient: HumanAddr
+    },
+    Swap {
+        /// The token type to swap from.
+        offer: TokenTypeAmount
     },
     /// Sent by the LP token contract so that we can record its address.
     OnLpTokenInit

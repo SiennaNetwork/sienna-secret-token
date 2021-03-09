@@ -1,11 +1,12 @@
 use std::fmt;
 
 use cosmwasm_std::{
-    Api, CanonicalAddr, Extern, HumanAddr, Querier, StdResult, Storage, Uint128
+    Api, CanonicalAddr, Extern, HumanAddr, Querier, StdResult, 
+    Storage, Uint128, CosmosMsg, WasmMsg, BankMsg, Coin, to_binary
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use secret_toolkit::snip20::balance_query;
+use secret_toolkit::snip20;
 
 const BLOCK_SIZE: usize = 256;
 
@@ -16,14 +17,10 @@ pub struct TokenPairAmount {
     pub amount_1: Uint128
 }
 
-impl fmt::Display for TokenPairAmount {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "Token 1: {} {} \n Token 2: {} {}",
-            self.pair.0, self.amount_0, self.pair.1, self.amount_1
-        )
-    }
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct TokenTypeAmount {
+    pub token: TokenType,
+    pub amount: Uint128
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
@@ -50,6 +47,61 @@ pub struct TokenPairIterator<'a> {
 pub struct TokenPairAmountIterator<'a> {
     pair: &'a TokenPairAmount,
     index: u8
+}
+
+pub fn create_send_msg(
+    token: &TokenType,
+    sender: HumanAddr,
+    recipient: HumanAddr,
+    amount: Uint128
+) -> StdResult<CosmosMsg> {
+    let msg = match token {
+        TokenType::CustomToken { contract_addr, token_code_hash } => {
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: contract_addr.clone(),
+                callback_code_hash: token_code_hash.to_string(),
+                msg: to_binary(&snip20::HandleMsg::Send {
+                    recipient: recipient,
+                    amount: amount,
+                    padding: None,
+                    msg: None,
+                })?,
+                send: vec![]
+            })
+        },
+        TokenType::NativeToken { denom } => {            
+            CosmosMsg::Bank(BankMsg::Send {
+                from_address: sender,
+                to_address: recipient,
+                amount: vec![Coin {
+                    denom: denom.to_string(),
+                    amount: amount
+                }],
+            })
+        }
+    };
+
+    Ok(msg)
+}
+
+impl fmt::Display for TokenPairAmount {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Token 1: {} {} \n Token 2: {} {}",
+            self.pair.0, self.amount_0, self.pair.1, self.amount_1
+        )
+    }
+}
+
+impl fmt::Display for TokenTypeAmount {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "Token type: {} \n Amount: {}",
+            self.token, self.amount
+        )
+    }
 }
 
 impl fmt::Display for TokenType {
@@ -98,7 +150,7 @@ impl TokenType {
                 Ok(result.amount)
             },
             TokenType::CustomToken { contract_addr, token_code_hash } => {
-                let result = balance_query(
+                let result = snip20::balance_query(
                     &deps.querier,
                     exchange_addr.clone(),
                     viewing_key,
@@ -127,6 +179,23 @@ impl TokenPair {
 
         // order is important
         Ok([amount_0, amount_1])
+    }
+
+    /// Returns `true` if one of the token types in the pair is the same as the argument.
+    pub fn contains(&self, token: &TokenType) -> bool {
+        self.0 == *token || self.1 == *token
+    }
+
+    /// Returns the index of the stored token type (0 or 1) that matches the argument.
+    /// Returns `None` if there are no matches.
+    pub fn get_token_index(&self, token: &TokenType) -> Option<usize> {
+        if self.0 == *token {
+            return Some(0);
+        } else if self.1 == *token {
+            return Some(1);
+        }
+
+        None
     }
 }
 

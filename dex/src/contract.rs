@@ -1,9 +1,10 @@
+use std::ops::Add;
 use cosmwasm_std::{
-    to_binary, Api, Env, Extern, HandleResponse, InitResponse, Querier, StdError, Coin,
-    StdResult, Storage, QueryResult, CosmosMsg, WasmMsg, Uint128, log, HumanAddr, BankMsg, Decimal
+    to_binary, Api, Env, Extern, HandleResponse, InitResponse, Querier, StdError,
+    StdResult, Storage, QueryResult, CosmosMsg, WasmMsg, Uint128, log, HumanAddr, Decimal
 };
 use secret_toolkit::snip20;
-use amm_shared::{PairInitMsg, TokenInitMsg, TokenType, TokenPairAmount, ContractInfo, Callback, U256};
+use amm_shared::{PairInitMsg, TokenInitMsg, TokenType, TokenPairAmount, ContractInfo, Callback, U256, TokenTypeAmount, create_send_msg};
 use amm_shared::u256_math;
 use utils::viewing_key::ViewingKey;
 
@@ -14,6 +15,8 @@ use crate::decimal_math;
 /// Pad handle responses and log attributes to blocks
 /// of 256 bytes to prevent leaking info based on response size
 const BLOCK_SIZE: usize = 256;
+const FEE_NOM: Uint128 = Uint128(3);
+const FEE_DENOM: Uint128 = Uint128(1000);
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -64,7 +67,8 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         },
         pair: msg.pair,
         contract_addr: env.contract.address,
-        viewing_key: viewing_key
+        viewing_key: viewing_key,
+        pool_cache: [ Uint128::zero(), Uint128::zero() ]
     };
 
     store_config(&mut deps.storage, &config)?;
@@ -84,6 +88,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         HandleMsg::AddLiquidity { deposit, slippage_tolerance } => add_liquidity(deps, env, deposit, slippage_tolerance),
         HandleMsg::RemoveLiquidity { amount, recipient } => remove_liquidity(deps, env, amount, recipient),
         HandleMsg::OnLpTokenInit => register_lp_token(deps, env),
+        HandleMsg::Swap { offer } => swap(deps, env, offer)
     }
 }
 
@@ -96,7 +101,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     match msg {
         QueryMsg::PairInfo => to_binary(&QueryMsgResponse::PairInfo(config.pair)),
         QueryMsg::FactoryInfo => to_binary(&QueryMsgResponse::FactoryInfo(config.factory_info)),
-        QueryMsg::Pool => query_pool_amount(deps)
+        QueryMsg::Pool => query_pool_amount(deps, config)
     }
 }
 
@@ -145,6 +150,12 @@ fn add_liquidity<S: Storage, A: Api, Q: Querier>(
                 );
             },
             TokenType::NativeToken { .. } => {
+                // TODO: shouldn't we verify that funds have actually been sent via env.message.sent_funds?
+                // I don't think anything is stopping somebody from calling this method, without actually providing
+                // any amount of SCRT?
+
+                // If the asset is native token, balance is already increased.
+                // To calculate properly we should subtract user deposit from the pool.
                 pool_balances[i] = (pool_balances[i] - amount)?;
             }
         }
@@ -280,33 +291,9 @@ fn remove_liquidity<S: Storage, A: Api, Q: Querier>(
     let mut i = 0;
 
     for token in pair.into_iter() {
-        let msg = match token {
-            TokenType::CustomToken { contract_addr, token_code_hash } => {
-                CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: contract_addr.clone(),
-                    callback_code_hash: token_code_hash.to_string(),
-                    msg: to_binary(&snip20::HandleMsg::Send {
-                        recipient: recipient.clone(),
-                        amount: pool_withdrawn[i],
-                        padding: None,
-                        msg: None,
-                    })?,
-                    send: vec![]
-                })
-            },
-            TokenType::NativeToken { denom } => {            
-                CosmosMsg::Bank(BankMsg::Send {
-                    from_address: env.contract.address.clone(),
-                    to_address: recipient.clone(),
-                    amount: vec![Coin {
-                        denom: denom.to_string(),
-                        amount: pool_withdrawn[i]
-                    }],
-                })
-            }
-        };
-
-        messages.push(msg);
+        messages.push(
+            create_send_msg(&token, env.contract.address.clone(), recipient.clone(), pool_withdrawn[i])?
+        );
 
         i += 1;
     }
@@ -322,7 +309,7 @@ fn remove_liquidity<S: Storage, A: Api, Q: Querier>(
     Ok(HandleResponse {
         messages: messages,
         log: vec![
-            log("action", "withdraw_liquidity"),
+            log("action", "remove_liquidity"),
             log("withdrawn_share", amount.to_string()),
             log(
                 "refund_assets",
@@ -333,11 +320,54 @@ fn remove_liquidity<S: Storage, A: Api, Q: Querier>(
     })
 }
 
-fn query_pool_amount<S: Storage, A: Api, Q: Querier>(
-    deps: &Extern<S, A, Q>
-) -> QueryResult {
-    let config = load_config(&deps.storage)?;
+fn swap<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    offer: TokenTypeAmount
+) -> StdResult<HandleResponse> {
+    let mut config = load_config(&deps.storage)?;
 
+    if !config.pair.contains(&offer.token) {
+        return Err(StdError::generic_err(format!("The supplied token {}, is not managed by this contract.", offer.token)));
+    }
+
+    let pool_balance = offer.token.query_balance(deps, config.contract_addr.clone(), config.viewing_key.0.clone())?;
+    
+    let amount = U256::from(pool_balance.u128()).checked_sub(U256::from(offer.amount.u128())).ok_or_else(|| {
+        StdError::generic_err("The swap amount offered is larger than pool amount.")
+    })?;
+
+    let token_index = config.pair.get_token_index(&offer.token).unwrap(); //Safe, because we checked above for existence
+    config.pool_cache[token_index] = config.pool_cache[token_index].add(offer.amount);
+
+    store_config(&mut deps.storage, &config)?;
+
+    let (return_amount, spread_amount, commission_amount) = compute_swap(
+        Uint128(amount.low_u128()),
+        pool_balance,
+        offer.amount
+    )?;
+
+    Ok(HandleResponse{
+        messages: vec![
+            create_send_msg(&offer.token, env.contract.address, env.message.sender, return_amount)?
+        ],
+        log: vec![
+            log("action", "swap"),
+            log("offer_token", offer.token.to_string()),
+            log("offer_amount", offer.amount.to_string()),
+            log("return_amount", return_amount.to_string()),
+            log("spread_amount", spread_amount.to_string()),
+            log("commission_amount", commission_amount.to_string()),
+        ],
+        data: None
+    })
+}
+
+fn query_pool_amount<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    config: Config
+) -> QueryResult {
     let result = config.pair.query_balances(deps, config.contract_addr, config.viewing_key.0)?;
 
     to_binary(&QueryMsgResponse::Pool(
@@ -419,6 +449,85 @@ fn try_register_custom_token(
     }
 
     Ok(())
+}
+
+// Copied from https://github.com/enigmampc/SecretSwap/blob/ffd72d1c94096ac3a78aaf8e576f22584f49fe7a/contracts/secretswap_pair/src/contract.rs#L768
+fn compute_swap(
+    offer_pool: Uint128,
+    ask_pool: Uint128,
+    offer_amount: Uint128
+) -> StdResult<(Uint128, Uint128, Uint128)> {
+    // offer => ask
+    let offer_pool = Some(U256::from(offer_pool.u128()));
+    let ask_pool = Some(U256::from(ask_pool.u128()));
+    let offer_amount = Some(U256::from(offer_amount.u128()));
+
+    // cp = offer_pool * ask_pool
+    let cp = u256_math::mul(offer_pool, ask_pool);
+    cp.ok_or_else(|| {
+        StdError::generic_err(format!(
+            "Cannot calculate cp = offer_pool {} * ask_pool {}",
+            offer_pool.unwrap(),
+            ask_pool.unwrap()
+        ))
+    })?;
+
+    // return_amount = (ask_pool - cp / (offer_pool + offer_amount))
+    // ask_amount = return_amount * (1 - commission_rate)
+    let return_amount = u256_math::sub(ask_pool, u256_math::div(cp, u256_math::add(offer_pool, offer_amount)));
+    return_amount.ok_or_else(|| {
+        StdError::generic_err(format!(
+            "Cannot calculate return_amount = (ask_pool {} - cp {} / (offer_pool {} + offer_amount {}))",
+            ask_pool.unwrap(),
+            cp.unwrap(),
+            offer_pool.unwrap(),
+            offer_amount.unwrap(),
+        ))
+    })?;
+
+    // calculate spread & commission
+    // spread = offer_amount * ask_pool / offer_pool - return_amount
+    let spread_amount = u256_math::div(u256_math::mul(offer_amount, ask_pool), offer_pool)
+        .ok_or_else(|| {
+            StdError::generic_err(format!(
+                "Cannot calculate offer_amount {} * ask_pool {} / offer_pool {}",
+                offer_amount.unwrap(),
+                ask_pool.unwrap(),
+                offer_pool.unwrap()
+            ))
+        })?
+        .saturating_sub(return_amount.unwrap());
+
+    // commission_amount = return_amount * commission_rate_nom / commission_rate_denom
+    let commission_rate_nom = Some(U256::from(FEE_NOM.u128()));
+    let commission_rate_denom = Some(U256::from(FEE_DENOM.u128()));
+    let commission_amount = u256_math::div(
+        u256_math::mul(return_amount, commission_rate_nom),
+        commission_rate_denom,
+    )
+    .ok_or_else(|| {
+        StdError::generic_err(format!(
+            "Cannot calculate return_amount {} * commission_rate_nom {} / commission_rate_denom {}",
+            return_amount.unwrap(),
+            commission_rate_nom.unwrap(),
+            commission_rate_denom.unwrap()
+        ))
+    })?;
+
+    // commission will be absorbed to pool
+    let return_amount = u256_math::sub(return_amount, Some(commission_amount)).ok_or_else(|| {
+        StdError::generic_err(format!(
+            "Cannot calculate return_amount {} - commission_amount {}",
+            return_amount.unwrap(),
+            commission_amount
+        ))
+    })?;
+
+    Ok((
+        Uint128(return_amount.low_u128()),
+        Uint128(spread_amount.low_u128()),
+        Uint128(commission_amount.low_u128()),
+    ))
 }
 
 /// The amount the price moves in a trading pair between when a transaction is submitted and when it is executed.
