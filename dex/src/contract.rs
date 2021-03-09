@@ -338,6 +338,7 @@ fn swap<S: Storage, A: Api, Q: Querier>(
     })?;
 
     let token_index = config.pair.get_token_index(&offer.token).unwrap(); //Safe, because we checked above for existence
+    // TODO: not sure why add instead of assign
     config.pool_cache[token_index] = config.pool_cache[token_index].add(offer.amount);
 
     store_config(&mut deps.storage, &config)?;

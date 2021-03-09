@@ -176,13 +176,11 @@ mod tests {
             TokenPair(
                 TokenType::CustomToken {
                     contract_addr: HumanAddr("first_addr".into()),
-                    token_code_hash: "13123adasd".into(),
-                    viewing_key: "viewing_key1".into()
+                    token_code_hash: "13123adasd".into()
                 },
                 TokenType::CustomToken {
                     contract_addr: HumanAddr("scnd_addr".into()),
-                    token_code_hash: "4534qwerqqw".into(),
-                    viewing_key: "viewing_key2".into()
+                    token_code_hash: "4534qwerqqw".into()
                 }
             )
         )?;
@@ -207,8 +205,7 @@ mod tests {
                 },
                 TokenType::CustomToken {
                     contract_addr: HumanAddr("third_addr".into()),
-                    token_code_hash: "asd21312asd".into(),
-                    viewing_key: "viewing_key3".into()
+                    token_code_hash: "asd21312asd".into()
                 }
             )
         )?;
@@ -223,13 +220,11 @@ mod tests {
         let pair = TokenPair (
             TokenType::CustomToken {
                 contract_addr: HumanAddr("first_addr".into()),
-                token_code_hash: "13123adasd".into(),
-                viewing_key: "viewing_key1".into()
+                token_code_hash: "13123adasd".into()
             },
             TokenType::CustomToken {
                 contract_addr: HumanAddr("scnd_addr".into()),
-                token_code_hash: "4534qwerqqw".into(),
-                viewing_key: "viewing_key2".into()
+                token_code_hash: "4534qwerqqw".into()
             }  
         );
 
@@ -260,13 +255,11 @@ mod tests {
             pair: TokenPair (
                 TokenType::CustomToken {
                     contract_addr: HumanAddr("first_addr".into()),
-                    token_code_hash: "13123adasd".into(),
-                    viewing_key: "viewing_key1".into()
+                    token_code_hash: "13123adasd".into()
                 },
                 TokenType::CustomToken {
                     contract_addr: HumanAddr("scnd_addr".into()),
-                    token_code_hash: "4534qwerqqw".into(),
-                    viewing_key: "viewing_key2".into()
+                    token_code_hash: "4534qwerqqw".into()
                 }  
             ),
             address: HumanAddr("ctrct_addr".into())
@@ -278,13 +271,11 @@ mod tests {
             pair: TokenPair (
                 TokenType::CustomToken {
                     contract_addr: HumanAddr("scnd_addr".into()),
-                    token_code_hash: "4534qwerqqw".into(),
-                    viewing_key: "viewing_key2".into()
+                    token_code_hash: "4534qwerqqw".into()
                 },
                 TokenType::CustomToken {
                     contract_addr: HumanAddr("first_addr".into()),
-                    token_code_hash: "13123adasd".into(),
-                    viewing_key: "viewing_key1".into()
+                    token_code_hash: "13123adasd".into()
                 },
             ),
             address: HumanAddr("other_addr".into())
