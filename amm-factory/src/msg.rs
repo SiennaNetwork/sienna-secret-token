@@ -23,7 +23,7 @@ pub struct Exchange {
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
     /// Instantiates an exchange pair contract
-    CreatePair {
+    CreateExchange {
         pair: TokenPair
     },
     /// Used by a newly instantiated exchange contract to send its address

@@ -3,14 +3,15 @@
 use cosmwasm_std::{
     log, to_binary, Api, BankMsg, Binary, CanonicalAddr, Coin, CosmosMsg, Env, Extern,
     HandleResponse, HumanAddr, InitResponse, Querier, QueryResult, ReadonlyStorage, StdError,
-    StdResult, Storage, Uint128,
+    StdResult, Storage, Uint128, WasmMsg
 };
+use amm_shared::LpTokenInitMsg;
 
 use crate::msg::{
-    space_pad, ContractStatusLevel, HandleAnswer, HandleMsg, InitMsg, QueryAnswer, QueryMsg,
+    space_pad, ContractStatusLevel, HandleAnswer, HandleMsg, QueryAnswer, QueryMsg,
     ResponseStatus::Success,
 };
-use crate::rand::sha_256;
+use crate::rand::{sha_256, Prng};
 use crate::receiver::Snip20ReceiveMsg;
 use crate::state::{
     get_receiver_hash, get_transfers, read_allowance, read_viewing_key, set_receiver_hash,
@@ -25,27 +26,8 @@ pub const RESPONSE_BLOCK_SIZE: usize = 256;
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    msg: InitMsg,
+    msg: LpTokenInitMsg,
 ) -> StdResult<InitResponse> {
-    let init_config = msg.config();
-    let mut total_supply: u128 = 0;
-    {
-        let mut balances = Balances::from_storage(&mut deps.storage);
-        let initial_balances = msg.initial_balances.unwrap_or_default();
-        for balance in initial_balances {
-            let balance_address = deps.api.canonical_address(&balance.address)?;
-            let amount = balance.amount.u128();
-            balances.set_account_balance(&balance_address, amount);
-            if let Some(new_total_supply) = total_supply.checked_add(amount) {
-                total_supply = new_total_supply;
-            } else {
-                return Err(StdError::generic_err(
-                    "The sum of all initial balances exceeds the maximum possible total supply",
-                ));
-            }
-        }
-    }
-
     // Check name, symbol, decimals
     if !is_valid_name(&msg.name) {
         return Err(StdError::generic_err(
@@ -60,25 +42,37 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     if msg.decimals > 18 {
         return Err(StdError::generic_err("Decimals must not exceed 18"));
     }
-
-    let admin = msg.admin.unwrap_or_else(|| env.message.sender);
-
-    let prng_seed_hashed = sha_256(&msg.prng_seed.0);
+    
+    let mut rng = Prng::new(&env.message.sender.0.as_bytes(), &env.block.time.to_be_bytes());
+    let prng_seed_hashed = sha_256(Binary::from(rng.rand_bytes()).as_slice());
 
     let mut config = Config::from_storage(&mut deps.storage);
     config.set_constants(&Constants {
         name: msg.name,
         symbol: msg.symbol,
         decimals: msg.decimals,
-        admin: admin.clone(),
+        admin: msg.admin.clone(),
         prng_seed: prng_seed_hashed.to_vec(),
-        total_supply_is_public: init_config.public_total_supply(),
+        total_supply_is_public: true,
     })?;
-    config.set_total_supply(total_supply);
-    config.set_contract_status(ContractStatusLevel::NormalRun);
-    config.set_minters(Vec::from([admin]))?;
 
-    Ok(InitResponse::default())
+    config.set_total_supply(0);
+    config.set_contract_status(ContractStatusLevel::NormalRun);
+    config.set_minters(Vec::from([msg.admin]))?;
+
+    Ok(InitResponse {
+        messages: vec![
+            // Execute the `HandleMsg::OnLpTokenInit` method of the exchange contract
+            // in order to register this address
+            CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: msg.callback.contract_addr,
+                callback_code_hash: msg.callback.contract_code_hash,
+                msg: msg.callback.msg,
+                send: vec![],
+            })
+        ],
+        log: vec![]
+    })
 }
 
 fn pad_response(response: StdResult<HandleResponse>) -> StdResult<HandleResponse> {

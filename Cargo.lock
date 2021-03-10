@@ -33,6 +33,7 @@ dependencies = [
 name = "amm-lp-token"
 version = "0.1.0"
 dependencies = [
+ "amm-shared",
  "base64 0.12.3",
  "bincode2",
  "cosmwasm-schema 0.9.4",

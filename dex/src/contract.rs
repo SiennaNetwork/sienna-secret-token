@@ -5,7 +5,7 @@ use cosmwasm_std::{
 };
 use secret_toolkit::snip20;
 use amm_shared::{
-    PairInitMsg, TokenInitMsg, TokenType, TokenPairAmount,
+    PairInitMsg, LpTokenInitMsg, TokenType, TokenPairAmount,
     ContractInfo, Callback, U256, TokenTypeAmount, create_send_msg
 };
 use amm_shared::u256_math;
@@ -37,7 +37,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     // Create LP token
     messages.push(CosmosMsg::Wasm(WasmMsg::Instantiate {
         code_id: msg.lp_token_contract.id,
-        msg: to_binary(&TokenInitMsg {
+        msg: to_binary(&LpTokenInitMsg {
             name: format!(
                 "SecretSwap Liquidity Provider (LP) token for {}-{}",
                 &msg.pair.0, &msg.pair.1
@@ -45,11 +45,11 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
             admin: env.contract.address.clone(),
             symbol: "SWAP-LP".to_string(),
             decimals: 6,
-            callback: Some(Callback {
+            callback: Callback {
                 msg: to_binary(&HandleMsg::OnLpTokenInit)?,
                 contract_addr: env.contract.address.clone(),
                 contract_code_hash: env.contract_code_hash
-            })
+            }
         })?,
         send: vec![],
         label: format!(

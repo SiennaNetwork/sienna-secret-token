@@ -12,17 +12,17 @@ pub struct PairInitMsg {
     /// LP token instantiation info
     pub lp_token_contract: ContractInstantiationInfo,
     /// Used by the exchange contract to
-    /// send us back its address on init
-    pub factory_info: ContractInfo,
+    /// send back its address to the factory on init
+    pub factory_info: ContractInfo
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]
-pub struct TokenInitMsg {
+pub struct LpTokenInitMsg {
     pub name: String,
     pub admin: HumanAddr,
     pub symbol: String,
     pub decimals: u8,
-    pub callback: Option<Callback>
+    pub callback: Callback
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

@@ -35,7 +35,7 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        HandleMsg::CreatePair { pair } => try_create_pair(deps, &env, pair),
+        HandleMsg::CreateExchange { pair } => create_exchange(deps, &env, pair),
         HandleMsg::RegisterExchange { exchange } => register_exchange(deps, exchange)
     }
 }
@@ -50,7 +50,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     }
 }
 
-fn try_create_pair<S: Storage, A: Api, Q: Querier>(
+fn create_exchange<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: &Env,
     pair: TokenPair
