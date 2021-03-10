@@ -6,14 +6,15 @@ use crate::TokenPair;
 use crate::{ContractInfo, ContractInstantiationInfo};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct PairInitMsg {
-    /// Asset infos
+pub struct ExchangeInitMsg {
+    /// The tokens that will be managed by the exchange
     pub pair: TokenPair,
     /// LP token instantiation info
     pub lp_token_contract: ContractInstantiationInfo,
     /// Used by the exchange contract to
     /// send back its address to the factory on init
-    pub factory_info: ContractInfo
+    pub factory_info: ContractInfo,
+    pub callback: Callback
 }
 
 #[derive(Serialize, Deserialize, JsonSchema)]

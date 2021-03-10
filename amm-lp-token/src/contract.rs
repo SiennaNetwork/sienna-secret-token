@@ -62,7 +62,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
 
     Ok(InitResponse {
         messages: vec![
-            // Execute the `HandleMsg::OnLpTokenInit` method of the exchange contract
+            // Execute the HandleMsg::OnLpTokenInit method of the exchange contract
             // in order to register this address
             CosmosMsg::Wasm(WasmMsg::Execute {
                 contract_addr: msg.callback.contract_addr,

@@ -5,7 +5,7 @@ use cosmwasm_std::{
 };
 use secret_toolkit::snip20;
 use amm_shared::{
-    PairInitMsg, LpTokenInitMsg, TokenType, TokenPairAmount,
+    ExchangeInitMsg, LpTokenInitMsg, TokenType, TokenPairAmount,
     ContractInfo, Callback, U256, TokenTypeAmount, create_send_msg
 };
 use amm_shared::u256_math;
@@ -24,7 +24,7 @@ const FEE_DENOM: Uint128 = Uint128(1000);
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env,
-    msg: PairInitMsg,
+    msg: ExchangeInitMsg,
 ) -> StdResult<InitResponse> {
 
     let mut messages = vec![];
@@ -60,6 +60,18 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         ),
         callback_code_hash: msg.lp_token_contract.code_hash.clone(),
     }));
+
+
+    // Execute the HandleMsg::RegisterExchange method of
+    // the factory contract in order to register this address
+    messages.push(
+        CosmosMsg::Wasm(WasmMsg::Execute {
+            contract_addr: msg.callback.contract_addr,
+            callback_code_hash: msg.callback.contract_code_hash,
+            msg: msg.callback.msg,
+            send: vec![],
+        })
+    );
 
     let config = Config {
         factory_info: msg.factory_info,

@@ -2,10 +2,13 @@ use cosmwasm_std::{
     to_binary, Api, Binary, Env, Extern, HandleResponse, InitResponse, Querier, StdError,
     StdResult, Storage, WasmMsg, CosmosMsg, log, HumanAddr
 };
-use amm_shared::{TokenPair, PairInitMsg, ContractInfo};
+use amm_shared::{TokenPair, ExchangeInitMsg, ContractInfo, Callback};
 
-use crate::msg::{InitMsg, HandleMsg, QueryMsg, QueryResponse, Exchange};
-use crate::state::{save_config, load_config, Config, pair_exists, store_exchange, get_address_for_pair, get_pair_for_address};
+use crate::msg::{InitMsg, HandleMsg, QueryMsg, QueryResponse};
+use crate::state::{
+    save_config, load_config, Config, pair_exists, store_exchange,
+    get_address_for_pair, get_pair_for_address, Exchange
+};
 
 pub fn init<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
@@ -35,8 +38,8 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
     msg: HandleMsg,
 ) -> StdResult<HandleResponse> {
     match msg {
-        HandleMsg::CreateExchange { pair } => create_exchange(deps, &env, pair),
-        HandleMsg::RegisterExchange { exchange } => register_exchange(deps, exchange)
+        HandleMsg::CreateExchange { pair } => create_exchange(deps, env, pair),
+        HandleMsg::RegisterExchange { pair } => register_exchange(deps, env, pair)
     }
 }
 
@@ -52,15 +55,20 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
 
 fn create_exchange<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    env: &Env,
+    env: Env,
     pair: TokenPair
 ) -> StdResult<HandleResponse> {
+
     if pair_exists(deps, &pair)? {
         return Err(StdError::generic_err("Pair already exists"));
     }
 
     let config = load_config(&deps.storage)?;
-    let log_msg = format!("{}-{}", pair.0, pair.1);
+
+    // Actually creating the exchange happens when the instantiated contract calls
+    // us back via the HandleMsg::RegisterExchange so that we can get its address.
+    // This is also more robust as we should register the pair only if the exchange
+    // contract has been successfully instantiated.
 
     Ok(HandleResponse{
         messages: vec![
@@ -77,12 +85,19 @@ fn create_exchange<S: Storage, A: Api, Q: Querier>(
                         config.pair_contract.id
                     ),
                     msg: to_binary(
-                        &PairInitMsg {
-                            pair,
+                        &ExchangeInitMsg {
+                            pair: pair.clone(),
                             lp_token_contract: config.lp_token_contract.clone(),
                             factory_info: ContractInfo {
                                 code_hash: env.contract_code_hash.clone(),
                                 address: env.contract.address.clone()
+                            },
+                            callback: Callback {
+                                contract_addr: env.contract.address,
+                                contract_code_hash: env.contract_code_hash,
+                                msg: to_binary(&HandleMsg::RegisterExchange {
+                                    pair: pair.clone()
+                                })?,
                             }
                         }
                     )?
@@ -90,8 +105,8 @@ fn create_exchange<S: Storage, A: Api, Q: Querier>(
             )
         ],
         log: vec![
-            log("action", "create_pair"),
-            log("pair", log_msg),
+            log("action", "create_exchange"),
+            log("pair", pair),
         ],
         data: None
     })
@@ -99,11 +114,24 @@ fn create_exchange<S: Storage, A: Api, Q: Querier>(
 
 fn register_exchange<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
-    exchange: Exchange
+    env: Env,
+    pair: TokenPair
 ) -> StdResult<HandleResponse> {
+    let exchange = Exchange {
+        pair: pair,
+        address: env.message.sender
+    };
+
     store_exchange(deps, &exchange)?;
 
-    Ok(HandleResponse::default())
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![
+            log("action", "register_exchange"),
+            log("pair", exchange.pair),
+        ],
+        data: None
+    })
 }
 
 fn query_exchange_pair<S: Storage, A: Api, Q: Querier>(

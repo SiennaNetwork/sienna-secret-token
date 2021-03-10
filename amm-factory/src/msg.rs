@@ -10,15 +10,6 @@ pub struct InitMsg {
     pub token_addr: HumanAddr
 }
 
-/// Represents the address of an exchange and the pair that it manages
-#[derive(Serialize, Deserialize, JsonSchema, PartialEq, Debug, Clone)]
-pub struct Exchange {
-    /// The pair that the contract manages.
-    pub pair: TokenPair,
-    /// Address of the contract that manages the exchange.
-    pub address: HumanAddr
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum HandleMsg {
@@ -26,10 +17,10 @@ pub enum HandleMsg {
     CreateExchange {
         pair: TokenPair
     },
-    /// Used by a newly instantiated exchange contract to send its address
-    /// for the factory to register.
+    /// Used by a newly instantiated exchange contract to register
+    /// itself with the factory
     RegisterExchange {
-        exchange: Exchange
+        pair: TokenPair
     }
 }
 

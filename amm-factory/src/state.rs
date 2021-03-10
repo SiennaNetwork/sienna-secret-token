@@ -3,9 +3,6 @@ use serde::{Deserialize, Serialize};
 use cosmwasm_std::{CanonicalAddr, HumanAddr, Storage, Querier, Api, StdResult, Extern, ReadonlyStorage, StdError};
 use utils::storage::{save, load};
 use amm_shared::{TokenPair, TokenType, ContractInstantiationInfo};
-
-use crate::msg::{Exchange};
-
 const CONFIG_KEY: &[u8] = b"config";
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -13,6 +10,15 @@ pub struct Config {
     pub lp_token_contract: ContractInstantiationInfo,
     pub pair_contract: ContractInstantiationInfo,
     pub token_addr: HumanAddr,
+}
+
+/// Represents the address of an exchange and the pair that it manages
+#[derive(Serialize, Deserialize, JsonSchema, PartialEq, Debug, Clone)]
+pub struct Exchange {
+    /// The pair that the contract manages.
+    pub pair: TokenPair,
+    /// Address of the contract that manages the exchange.
+    pub address: HumanAddr
 }
 
 /// Returns StdResult<()> resulting from saving the config to storage
