@@ -1,14 +1,15 @@
 [workspace]
 members = [
-  "kukumba",     # bdd testing framework
-  "fadroma",     # smart contract microframework
-  "token",       # any token that implements SNIP20
-  "schedule",    # model of the client's vesting logic
-  "mgmt",        # smart contract that mints and vests tokens according to schedule
-  "dex",         # uniswap exchange contract implementation
-  "amm-factory", # factory contract for creating exchanges
-  "amm-shared",  # shared types between amm-factory and dex
-  "utils"        # utility code used by contracts
+  "kukumba",      # bdd testing framework
+  "fadroma",      # smart contract microframework
+  "token",        # any token that implements SNIP20
+  "schedule",     # model of the client's vesting logic
+  "mgmt",         # smart contract that mints and vests tokens according to schedule
+  "dex",          # uniswap exchange contract implementation
+  "amm-factory",  # factory contract for creating exchanges
+  "amm-shared",   # shared types between amm-factory and dex,
+  "amm-lp-token", # a slight modification of a SNIP20 token used to represent a liquidity provider's share
+  "utils"         # utility code used by contracts
 ]
 
 [profile.release]
