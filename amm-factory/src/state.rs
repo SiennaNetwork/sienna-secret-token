@@ -9,7 +9,6 @@ const CONFIG_KEY: &[u8] = b"config";
 pub struct Config {
     pub lp_token_contract: ContractInstantiationInfo,
     pub pair_contract: ContractInstantiationInfo,
-    pub token_addr: HumanAddr,
 }
 
 /// Represents the address of an exchange and the pair that it manages
@@ -291,5 +290,33 @@ mod tests {
             Ok(_) => Err(StdError::generic_err("Exchange already exists")),
             Err(_) => Ok(())
         }
+    }
+
+    #[test]
+    fn test_pair_exists() -> StdResult<()> {
+        let ref mut deps = create_deps();
+
+        let pair = TokenPair (
+            TokenType::CustomToken {
+                contract_addr: HumanAddr("first_addr".into()),
+                token_code_hash: "13123adasd".into()
+            },
+            TokenType::NativeToken {
+                denom: "test1".into()
+            },
+        );
+
+        let address = HumanAddr("ctrct_addr".into());
+
+        let exchange = Exchange {
+            pair: pair.clone(),
+            address: address.clone()
+        };
+
+        store_exchange(deps, &exchange)?;
+
+        assert!(pair_exists(deps, &pair)?);
+
+        Ok(())
     }
 }

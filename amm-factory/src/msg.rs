@@ -7,7 +7,6 @@ use amm_shared::{TokenPair, ContractInstantiationInfo};
 pub struct InitMsg {
     pub lp_token_contract: ContractInstantiationInfo,
     pub pair_contract: ContractInstantiationInfo,
-    pub token_addr: HumanAddr
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -30,7 +29,7 @@ pub enum QueryMsg {
     GetExchangePair {
         exchange_addr: HumanAddr,
     },
-    GetPairExchangeAddress {
+    GetExchangeAddress {
         pair: TokenPair
     }
 }
@@ -41,7 +40,7 @@ pub enum QueryResponse {
     GetExchangePair {
         pair: TokenPair
     },
-    GetPairExchangeAddress {
+    GetExchangeAddress {
         address: HumanAddr
     }
 }

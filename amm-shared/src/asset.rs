@@ -5,7 +5,7 @@ use cosmwasm_std::{
     Storage, Uint128, CosmosMsg, WasmMsg, BankMsg, Coin, to_binary
 };
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer, Serializer};
 use secret_toolkit::snip20;
 
 const BLOCK_SIZE: usize = 256;
@@ -23,7 +23,7 @@ pub struct TokenTypeAmount {
     pub amount: Uint128
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, JsonSchema)]
+#[derive(Clone, Debug, JsonSchema)]
 pub struct TokenPair(pub TokenType, pub TokenType);
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -212,6 +212,32 @@ impl TokenPair {
 impl PartialEq for TokenPair {
     fn eq(&self, other: &TokenPair) -> bool {
         (self.0 == other.0 || self.0 == other.1) && (self.1 == other.0 || self.1 == other.1)
+    }
+}
+
+// This is only used for serde, because it doesn't work with struct tuples.
+#[derive(Serialize, Deserialize)]
+struct TokenPairSerde {
+    token_0: TokenType,
+    token_1: TokenType,
+}
+
+impl Serialize for TokenPair {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        TokenPairSerde { token_0: self.0.clone(), token_1: self.1.clone() }.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TokenPair {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Deserialize::deserialize(deserializer)
+            .map(|TokenPairSerde { token_0, token_1 }| TokenPair(token_0, token_1))
     }
 }
 
