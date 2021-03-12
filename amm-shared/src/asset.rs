@@ -1,8 +1,8 @@
 use std::fmt;
 
 use cosmwasm_std::{
-    Api, CanonicalAddr, Extern, HumanAddr, Querier, StdResult, 
-    Storage, Uint128, CosmosMsg, WasmMsg, BankMsg, Coin, to_binary
+    Api, CanonicalAddr, HumanAddr, Querier, StdResult, 
+    Uint128, CosmosMsg, WasmMsg, BankMsg, Coin, to_binary
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Deserializer, Serializer};
@@ -26,11 +26,27 @@ pub struct TokenTypeAmount {
 #[derive(Clone, Debug, JsonSchema)]
 pub struct TokenPair(pub TokenType, pub TokenType);
 
+#[derive(Clone, Debug, JsonSchema)]
+pub struct TokenPairStored(pub TokenTypeStored, pub TokenTypeStored);
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TokenType {
     CustomToken {
         contract_addr: HumanAddr,
+        token_code_hash: String,
+        //viewing_key: String,
+    },
+    NativeToken {
+        denom: String,
+    },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TokenTypeStored {
+    CustomToken {
+        contract_addr: CanonicalAddr,
         token_code_hash: String,
         //viewing_key: String,
     },
@@ -124,14 +140,18 @@ impl fmt::Display for TokenType {
 }
 
 impl TokenType {
-    pub fn get_canonical_address<S: Storage, A: Api, Q: Querier>(
-        &self, 
-        deps: &Extern<S, A, Q>
-    ) -> StdResult<Option<CanonicalAddr>> {
-        match self {
-            TokenType::NativeToken { .. } => Ok(None),
-            TokenType::CustomToken { contract_addr, .. } => Ok(Some(deps.api.canonical_address(contract_addr)?)),
-        }
+    pub fn to_stored(&self, api: &impl Api) -> StdResult<TokenTypeStored> {
+        Ok(match self {
+            TokenType::CustomToken { contract_addr, token_code_hash } => 
+                TokenTypeStored::CustomToken { 
+                    contract_addr: api.canonical_address(&contract_addr)?,
+                    token_code_hash: token_code_hash.clone()
+                },
+            TokenType::NativeToken { denom } => 
+                TokenTypeStored::NativeToken { 
+                    denom: denom.clone()
+                }
+        })
     }
 
     pub fn is_native_token(&self) -> bool {
@@ -148,20 +168,20 @@ impl TokenType {
         }
     }
 
-    pub fn query_balance<S: Storage, A: Api, Q: Querier>(
+    pub fn query_balance(
         &self,
-        deps: &Extern<S, A, Q>,
+        querier: &impl Querier,
         exchange_addr: HumanAddr,
         viewing_key: String
     ) -> StdResult<Uint128> {
         match self {
             TokenType::NativeToken { denom } => {
-                let result = deps.querier.query_balance(exchange_addr, denom)?;
+                let result = querier.query_balance(exchange_addr, denom)?;
                 Ok(result.amount)
             },
             TokenType::CustomToken { contract_addr, token_code_hash } => {
                 let result = snip20::balance_query(
-                    &deps.querier,
+                    querier,
                     exchange_addr.clone(),
                     viewing_key,
                     BLOCK_SIZE,
@@ -175,17 +195,37 @@ impl TokenType {
     }
 }
 
+impl TokenTypeStored {
+    pub fn to_normal(self, api: &impl Api) -> StdResult<TokenType> {
+        Ok(match self {
+            TokenTypeStored::CustomToken { contract_addr, token_code_hash } => 
+                TokenType::CustomToken { 
+                    contract_addr: api.human_address(&contract_addr)?,
+                    token_code_hash
+                },
+            TokenTypeStored::NativeToken { denom } => 
+                TokenType::NativeToken { 
+                    denom
+                }
+        })
+    }
+}
+
 impl TokenPair {
+    pub fn to_stored(&self, api: &impl Api) -> StdResult<TokenPairStored> {
+        Ok(TokenPairStored(self.0.to_stored(api)?, self.1.to_stored(api)?))
+    }
+
     /// Returns the balance for each token in the pair. The order of the balances in returned array
     /// correspond to the token order in the pair i.e `[ self.0 balance, self.1 balance ]`.
-    pub fn query_balances<S: Storage, A: Api, Q: Querier>(
+    pub fn query_balances(
         &self,
-        deps: &Extern<S, A, Q>,
+        querier: &impl Querier,
         exchange_addr: HumanAddr,
         viewing_key: String
     ) -> StdResult<[Uint128; 2]> {
-        let amount_0 = self.0.query_balance(deps, exchange_addr.clone(), viewing_key.clone())?;
-        let amount_1 = self.1.query_balance(deps, exchange_addr, viewing_key)?;
+        let amount_0 = self.0.query_balance(querier, exchange_addr.clone(), viewing_key.clone())?;
+        let amount_1 = self.1.query_balance(querier, exchange_addr, viewing_key)?;
 
         // order is important
         Ok([amount_0, amount_1])
@@ -215,29 +255,9 @@ impl PartialEq for TokenPair {
     }
 }
 
-// This is only used for serde, because it doesn't work with struct tuples.
-#[derive(Serialize, Deserialize)]
-struct TokenPairSerde {
-    token_0: TokenType,
-    token_1: TokenType,
-}
-
-impl Serialize for TokenPair {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        TokenPairSerde { token_0: self.0.clone(), token_1: self.1.clone() }.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for TokenPair {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Deserialize::deserialize(deserializer)
-            .map(|TokenPairSerde { token_0, token_1 }| TokenPair(token_0, token_1))
+impl TokenPairStored {
+    pub fn to_normal(self, api: &impl Api) -> StdResult<TokenPair> {
+        Ok(TokenPair(self.0.to_normal(api)?, self.1.to_normal(api)?))
     }
 }
 
@@ -294,6 +314,57 @@ impl<'a> Iterator for TokenPairAmountIterator<'a> {
         self.index += 1;
 
         result
+    }
+}
+
+// These are only used for serde, because it doesn't work with struct tuples.
+#[derive(Serialize, Deserialize)]
+struct TokenPairSerde {
+    token_0: TokenType,
+    token_1: TokenType,
+}
+
+impl Serialize for TokenPair {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        TokenPairSerde { token_0: self.0.clone(), token_1: self.1.clone() }.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TokenPair {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Deserialize::deserialize(deserializer)
+            .map(|TokenPairSerde { token_0, token_1 }| TokenPair(token_0, token_1))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct TokenPairStoredSerde {
+    token_0: TokenTypeStored,
+    token_1: TokenTypeStored,
+}
+
+impl Serialize for TokenPairStored {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        TokenPairStoredSerde { token_0: self.0.clone(), token_1: self.1.clone() }.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TokenPairStored {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Deserialize::deserialize(deserializer)
+            .map(|TokenPairStoredSerde { token_0, token_1 }| TokenPairStored(token_0, token_1))
     }
 }
 

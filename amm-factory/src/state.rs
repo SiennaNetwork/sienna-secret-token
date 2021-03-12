@@ -2,7 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use cosmwasm_std::{CanonicalAddr, HumanAddr, Storage, Querier, Api, StdResult, Extern, ReadonlyStorage, StdError};
 use utils::storage::{save, load};
-use amm_shared::{TokenPair, TokenType, ContractInstantiationInfo};
+use amm_shared::{TokenPair, TokenPairStored, TokenTypeStored, ContractInstantiationInfo};
+
 const CONFIG_KEY: &[u8] = b"config";
 
 #[derive(Serialize, Deserialize, JsonSchema)]
@@ -45,10 +46,8 @@ pub fn pair_exists<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     pair: &TokenPair
 ) -> StdResult<bool> {
-    let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
-    let addr_second = pair.1.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
-
-    let key = generate_pair_key(pair, &addr_first, &addr_second);
+    let pair = pair.to_stored(&deps.api)?;
+    let key = generate_pair_key(&pair);
 
     if let Some(_) = deps.storage.get(&key) {
         return Ok(true);
@@ -71,13 +70,11 @@ pub fn store_exchange<S: Storage, A: Api, Q: Querier>(
     let canonical = deps.api.canonical_address(&address)?;
     
     if let Some(_) = deps.storage.get(canonical.as_slice()) {
-        return Err(StdError::generic_err("Exchange address already exists"));
+        return Err(StdError::generic_err("Exchange already exists"));
     }
 
-    let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
-    let addr_second = pair.1.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
-
-    let key = generate_pair_key(&pair, &addr_first, &addr_second);
+    let pair = pair.to_stored(&deps.api)?;
+    let key = generate_pair_key(&pair);
 
     if let Some(_) = deps.storage.get(&key) {
         return Err(StdError::generic_err("Exchange address already exists"));
@@ -96,7 +93,8 @@ pub fn get_pair_for_address<S: Storage, A: Api, Q: Querier>(
 ) -> StdResult<TokenPair> {
     let canonical = deps.api.canonical_address(exchange_addr)?;
 
-    load(&deps.storage, canonical.as_slice())
+    let result: TokenPairStored = load(&deps.storage, canonical.as_slice())?;
+    result.to_normal(&deps.api)
 }
 
 /// Get the address of an exchange contract which manages the given pair.
@@ -104,29 +102,25 @@ pub fn get_address_for_pair<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     pair: &TokenPair
 ) -> StdResult<CanonicalAddr> {
-    let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
-    let addr_second = pair.1.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
-
-    let key = generate_pair_key(&pair, &addr_first, &addr_second);
+    let pair = pair.to_stored(&deps.api)?;
+    let key = generate_pair_key(&pair);
 
     load(&deps.storage, &key)
 }
 
 fn generate_pair_key(
-    pair: &TokenPair,
-    addr_first: &CanonicalAddr,
-    addr_second: &CanonicalAddr
+    pair: &TokenPairStored
 ) -> Vec<u8> {
     let mut bytes: Vec<&[u8]> = Vec::new();
 
     match &pair.0 {
-        TokenType::NativeToken { denom } => bytes.push(denom.as_bytes()),
-        TokenType::CustomToken { .. } => bytes.push(addr_first.as_slice())
+        TokenTypeStored::NativeToken { denom } => bytes.push(denom.as_bytes()),
+        TokenTypeStored::CustomToken { contract_addr, .. } => bytes.push(contract_addr.as_slice())
     }
 
     match &pair.1 {
-        TokenType::NativeToken { denom } => bytes.push(denom.as_bytes()),
-        TokenType::CustomToken { .. } => bytes.push(addr_second.as_slice())
+        TokenTypeStored::NativeToken { denom } => bytes.push(denom.as_bytes()),
+        TokenTypeStored::CustomToken { contract_addr, .. } => bytes.push(contract_addr.as_slice())
     }
 
     bytes.sort_by(|a, b| a.cmp(&b));
@@ -139,6 +133,7 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies};
     use cosmwasm_std::{HumanAddr, Storage};
+    use amm_shared::TokenType;
 
     fn create_deps() -> Extern<impl Storage, impl Api, impl Querier> {
         mock_dependencies(10, &[])
@@ -150,17 +145,13 @@ mod tests {
             deps: &Extern<S, A, Q>,
             pair: TokenPair
         ) -> StdResult<()> {
-            let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
-            let addr_second = pair.1.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
-    
-            let key = generate_pair_key(&pair, &addr_first, &addr_second);
+            let stored_pair = pair.to_stored(&deps.api)?;
+            let key = generate_pair_key(&stored_pair);
     
             let pair = swap_pair(&pair);
     
-            let addr_first = pair.0.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
-            let addr_second = pair.1.get_canonical_address(deps)?.unwrap_or_else(|| CanonicalAddr::default());
-    
-            let swapped_key = generate_pair_key(&pair, &addr_first, &addr_second);
+            let stored_pair = pair.to_stored(&deps.api)?;
+            let swapped_key = generate_pair_key(&stored_pair);
     
             assert_eq!(key, swapped_key);
 

@@ -86,7 +86,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         pool_cache: [ Uint128::zero(), Uint128::zero() ]
     };
 
-    store_config(&mut deps.storage, &config)?;
+    store_config(deps, &config)?;
 
     Ok(InitResponse {
         messages,
@@ -111,7 +111,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     msg: QueryMsg,
 ) -> QueryResult {
-    let config = load_config(&deps.storage)?;
+    let config = load_config(deps)?;
 
     match msg {
         QueryMsg::PairInfo => to_binary(&QueryMsgResponse::PairInfo(config.pair)),
@@ -128,7 +128,7 @@ fn add_liquidity<S: Storage, A: Api, Q: Querier>(
     slippage: Option<Decimal>
 ) -> StdResult<HandleResponse> {
 
-    let config = load_config(&deps.storage)?;
+    let config = load_config(&deps)?;
 
     let Config {
         pair,
@@ -149,7 +149,7 @@ fn add_liquidity<S: Storage, A: Api, Q: Querier>(
 
     let mut messages: Vec<CosmosMsg> = vec![];
 
-    let mut pool_balances = deposit.pair.query_balances(deps, contract_addr, viewing_key.0)?;
+    let mut pool_balances = deposit.pair.query_balances(&deps.querier, contract_addr, viewing_key.0)?;
     let mut i = 0;
 
     for (amount, token) in deposit.into_iter() {
@@ -263,7 +263,7 @@ fn remove_liquidity<S: Storage, A: Api, Q: Querier>(
     amount: Uint128,
     recipient: HumanAddr
 ) -> StdResult<HandleResponse> {
-    let config = load_config(&deps.storage)?;
+    let config = load_config(&deps)?;
 
     let Config {
         pair,
@@ -274,7 +274,7 @@ fn remove_liquidity<S: Storage, A: Api, Q: Querier>(
     } = config;
 
     let liquidity_supply = query_liquidity(&deps.querier, &lp_token_info)?;
-    let pool_balances = pair.query_balances(deps, contract_addr, viewing_key.0)?;
+    let pool_balances = pair.query_balances(&deps.querier, contract_addr, viewing_key.0)?;
 
     // Calculate the withdrawn amount for each token in the pair - for each token X
     // amount of X withdrawn = amount in pool for X * amount of LP tokens being burned / total liquidity pool amount
@@ -341,13 +341,13 @@ fn swap<S: Storage, A: Api, Q: Querier>(
     env: Env,
     offer: TokenTypeAmount
 ) -> StdResult<HandleResponse> {
-    let mut config = load_config(&deps.storage)?;
+    let mut config = load_config(&deps)?;
 
     if !config.pair.contains(&offer.token) {
         return Err(StdError::generic_err(format!("The supplied token {}, is not managed by this contract.", offer.token)));
     }
 
-    let pool_balance = offer.token.query_balance(deps, config.contract_addr.clone(), config.viewing_key.0.clone())?;
+    let pool_balance = offer.token.query_balance(&deps.querier, config.contract_addr.clone(), config.viewing_key.0.clone())?;
     
     let amount = U256::from(pool_balance.u128()).checked_sub(U256::from(offer.amount.u128())).ok_or_else(|| {
         StdError::generic_err("The swap amount offered is larger than pool amount.")
@@ -357,7 +357,7 @@ fn swap<S: Storage, A: Api, Q: Querier>(
     // TODO: not sure why add instead of assign
     config.pool_cache[token_index] = config.pool_cache[token_index].add(offer.amount);
 
-    store_config(&mut deps.storage, &config)?;
+    store_config(deps, &config)?;
 
     let (return_amount, spread_amount, commission_amount) = compute_swap(
         Uint128(amount.low_u128()),
@@ -385,7 +385,7 @@ fn query_pool_amount<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     config: Config
 ) -> QueryResult {
-    let result = config.pair.query_balances(deps, config.contract_addr, config.viewing_key.0)?;
+    let result = config.pair.query_balances(&deps.querier, config.contract_addr, config.viewing_key.0)?;
 
     to_binary(&QueryMsgResponse::Pool(
         TokenPairAmount {
@@ -421,7 +421,7 @@ fn swap_simulation<S: Storage, A: Api, Q: Querier>(
         return Err(StdError::generic_err(format!("The supplied token {}, is not managed by this contract.", offer.token)));
     }
 
-    let pool_balance = offer.token.query_balance(deps, config.contract_addr.clone(), config.viewing_key.0.clone())?;
+    let pool_balance = offer.token.query_balance(&deps.querier, config.contract_addr.clone(), config.viewing_key.0.clone())?;
 
     let amount = U256::from(pool_balance.u128()).checked_sub(U256::from(offer.amount.u128())).ok_or_else(|| {
         StdError::generic_err("The swap amount offered is larger than pool amount.")
@@ -446,7 +446,7 @@ fn register_lp_token<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     env: Env
 ) -> StdResult<HandleResponse> {
-    let mut config = load_config(&deps.storage)?;
+    let mut config = load_config(&deps)?;
 
     //This should only be set once when the LP token is instantiated.
     if config.lp_token_info.address != HumanAddr::default() {
@@ -455,7 +455,7 @@ fn register_lp_token<S: Storage, A: Api, Q: Querier>(
 
     config.lp_token_info.address = env.message.sender.clone();
 
-    store_config(&mut deps.storage, &config)?;
+    store_config(deps, &config)?;
 
     Ok(HandleResponse {
         messages: vec![snip20::register_receive_msg(

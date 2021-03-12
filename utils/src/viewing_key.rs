@@ -11,7 +11,7 @@ use secret_toolkit::crypto::{sha_256, Prng};
 
 const VIEWING_KEY_PREFIX: &str = "api_key_";
 
-#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug)]
+#[derive(Serialize, Deserialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct ViewingKey(pub String);
 
 impl ViewingKey {

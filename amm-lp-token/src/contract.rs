@@ -1066,7 +1066,6 @@ fn is_valid_symbol(symbol: &str) -> bool {
 mod tests {
     use super::*;
     use crate::msg::ResponseStatus;
-    use crate::msg::{InitConfig, InitialBalance};
     use cosmwasm_std::testing::*;
     use cosmwasm_std::{from_binary, BlockInfo, ContractInfo, MessageInfo, QueryResponse, WasmMsg};
     use std::any::Any;
