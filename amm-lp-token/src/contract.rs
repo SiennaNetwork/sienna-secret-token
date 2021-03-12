@@ -1072,23 +1072,23 @@ mod tests {
 
     // Helper functions
 
-    fn init_helper(
-        initial_balances: Vec<InitialBalance>,
-    ) -> (
+    fn init_helper() -> (
         StdResult<InitResponse>,
         Extern<MockStorage, MockApi, MockQuerier>,
     ) {
         let mut deps = mock_dependencies(20, &[]);
         let env = mock_env("instantiator", &[]);
 
-        let init_msg = InitMsg {
+        let init_msg = LpTokenInitMsg {
             name: "sec-sec".to_string(),
             admin: Some(HumanAddr("admin".to_string())),
             symbol: "SECSEC".to_string(),
             decimals: 8,
-            initial_balances: Some(initial_balances),
-            prng_seed: Binary::from("lolz fun yay".as_bytes()),
-            config: None,
+            callback: Callback {
+                msg: to_binary("whatever".into())?,
+                contract_addr: env.contract.address.clone(),
+                contract_code_hash: env.contract_code_hash
+            }
         };
 
         (init(&mut deps, env, init_msg), deps)
@@ -1098,7 +1098,7 @@ mod tests {
     fn auth_query_helper(
         initial_balances: Vec<InitialBalance>,
     ) -> (ViewingKey, Extern<MockStorage, MockApi, MockQuerier>) {
-        let (init_result, mut deps) = init_helper(initial_balances.clone());
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1167,10 +1167,7 @@ mod tests {
 
     #[test]
     fn test_init_sanity() {
-        let (init_result, deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("lebron".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, deps) = init_helper();
         assert_eq!(init_result.unwrap(), InitResponse::default());
 
         let config = ReadonlyConfig::from_storage(&deps.storage);
@@ -1185,46 +1182,14 @@ mod tests {
             constants.prng_seed,
             sha_256("lolz fun yay".to_owned().as_bytes())
         );
-        assert_eq!(constants.total_supply_is_public, false);
-    }
-
-    #[test]
-    fn test_total_supply_overflow() {
-        let (init_result, _deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("lebron".to_string()),
-            amount: Uint128(u128::max_value()),
-        }]);
-        assert!(
-            init_result.is_ok(),
-            "Init failed: {}",
-            init_result.err().unwrap()
-        );
-
-        let (init_result, _deps) = init_helper(vec![
-            InitialBalance {
-                address: HumanAddr("lebron".to_string()),
-                amount: Uint128(u128::max_value()),
-            },
-            InitialBalance {
-                address: HumanAddr("giannis".to_string()),
-                amount: Uint128(1),
-            },
-        ]);
-        let error = extract_error_msg(init_result);
-        assert_eq!(
-            error,
-            "The sum of all initial balances exceeds the maximum possible total supply"
-        );
+        assert_eq!(constants.total_supply_is_public, true);
     }
 
     // Handle tests
 
     #[test]
     fn test_handle_transfer() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1263,10 +1228,7 @@ mod tests {
 
     #[test]
     fn test_handle_send() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1307,10 +1269,7 @@ mod tests {
 
     #[test]
     fn test_handle_register_receive() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1333,10 +1292,8 @@ mod tests {
 
     #[test]
     fn test_handle_create_viewing_key() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
+
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1369,10 +1326,8 @@ mod tests {
 
     #[test]
     fn test_handle_set_viewing_key() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
+
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1418,10 +1373,7 @@ mod tests {
 
     #[test]
     fn test_handle_transfer_from() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1536,10 +1488,7 @@ mod tests {
 
     #[test]
     fn test_handle_send_from() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1650,10 +1599,7 @@ mod tests {
 
     #[test]
     fn test_handle_burn_from() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1727,10 +1673,7 @@ mod tests {
 
     #[test]
     fn test_handle_decrease_allowance() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1806,10 +1749,7 @@ mod tests {
 
     #[test]
     fn test_handle_increase_allowance() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1872,10 +1812,7 @@ mod tests {
 
     #[test]
     fn test_handle_change_admin() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1902,10 +1839,7 @@ mod tests {
 
     #[test]
     fn test_handle_set_contract_status() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("admin".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1929,10 +1863,7 @@ mod tests {
 
     #[test]
     fn test_handle_redeem() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("butler".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -1961,10 +1892,7 @@ mod tests {
 
     #[test]
     fn test_handle_deposit() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("lebron".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -2000,10 +1928,7 @@ mod tests {
     #[test]
     fn test_handle_burn() {
         let initial_amount: u128 = 5000;
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("lebron".to_string()),
-            amount: Uint128(initial_amount),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -2030,10 +1955,7 @@ mod tests {
     #[test]
     fn test_handle_mint() {
         let initial_amount: u128 = 5000;
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("lebron".to_string()),
-            amount: Uint128(initial_amount),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -2062,10 +1984,7 @@ mod tests {
     fn test_handle_admin_commands() {
         let admin_err = "Admin commands can only be run from admin address".to_string();
 
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("lebron".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -2115,10 +2034,7 @@ mod tests {
 
     #[test]
     fn test_handle_pause_with_withdrawals() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("lebron".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -2164,10 +2080,7 @@ mod tests {
 
     #[test]
     fn test_handle_pause_all() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("lebron".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -2213,10 +2126,7 @@ mod tests {
 
     #[test]
     fn test_handle_set_minters() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -2258,10 +2168,7 @@ mod tests {
 
     #[test]
     fn test_handle_add_minters() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -2302,10 +2209,7 @@ mod tests {
 
     #[test]
     fn test_handle_remove_minters() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -2376,10 +2280,7 @@ mod tests {
 
     #[test]
     fn test_authenticated_queries() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("giannis".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -2490,10 +2391,7 @@ mod tests {
 
     #[test]
     fn test_query_allowance() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("giannis".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -2599,10 +2497,7 @@ mod tests {
 
     #[test]
     fn test_query_balance() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
@@ -2646,10 +2541,7 @@ mod tests {
 
     #[test]
     fn test_query_transfer_history() {
-        let (init_result, mut deps) = init_helper(vec![InitialBalance {
-            address: HumanAddr("bob".to_string()),
-            amount: Uint128(5000),
-        }]);
+        let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
             "Init failed: {}",
