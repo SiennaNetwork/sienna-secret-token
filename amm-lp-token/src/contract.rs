@@ -1069,6 +1069,7 @@ mod tests {
     use cosmwasm_std::testing::*;
     use cosmwasm_std::{from_binary, BlockInfo, ContractInfo, MessageInfo, QueryResponse, WasmMsg};
     use std::any::Any;
+    use amm_shared::Callback;
 
     // Helper functions
 
@@ -1081,23 +1082,34 @@ mod tests {
 
         let init_msg = LpTokenInitMsg {
             name: "sec-sec".to_string(),
-            admin: Some(HumanAddr("admin".to_string())),
+            admin: HumanAddr("admin".to_string()),
             symbol: "SECSEC".to_string(),
             decimals: 8,
             callback: Callback {
-                msg: to_binary("whatever".into())?,
+                msg: to_binary("whatever".into()).unwrap(),
                 contract_addr: env.contract.address.clone(),
-                contract_code_hash: env.contract_code_hash
+                contract_code_hash: env.contract_code_hash.clone()
             }
         };
 
         (init(&mut deps, env, init_msg), deps)
     }
 
+    fn set_initial_deposit_for(
+        deps: &mut Extern<MockStorage, MockApi, MockQuerier>,
+        address: impl Into<String>,
+        amount: u128
+    ) {
+        Config::from_storage(&mut deps.storage).set_total_supply(amount);
+
+        let address_raw = deps.api.canonical_address(&HumanAddr(address.into())).unwrap();
+
+        let mut balances = Balances::from_storage(&mut deps.storage);
+        balances.set_account_balance(&address_raw, amount);
+    }
+    /*
     /// Will return a ViewingKey only for the first account in `initial_balances`
-    fn auth_query_helper(
-        initial_balances: Vec<InitialBalance>,
-    ) -> (ViewingKey, Extern<MockStorage, MockApi, MockQuerier>) {
+    fn auth_query_helper() -> (ViewingKey, Extern<MockStorage, MockApi, MockQuerier>) {
         let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
@@ -1105,7 +1117,7 @@ mod tests {
             init_result.err().unwrap()
         );
 
-        let account = initial_balances[0].address.clone();
+        let account = HumanAddr("account".into());
         let create_vk_msg = HandleMsg::CreateViewingKey {
             entropy: "42".to_string(),
             padding: None,
@@ -1118,7 +1130,7 @@ mod tests {
 
         (vk, deps)
     }
-
+    */
     fn extract_error_msg<T: Any>(error: StdResult<T>) -> String {
         match error {
             Ok(response) => {
@@ -1167,8 +1179,10 @@ mod tests {
 
     #[test]
     fn test_init_sanity() {
-        let (init_result, deps) = init_helper();
-        assert_eq!(init_result.unwrap(), InitResponse::default());
+        let (init_result, mut deps) = init_helper();
+        assert!(init_result.is_ok());
+
+        Config::from_storage(&mut deps.storage).set_total_supply(5000);
 
         let config = ReadonlyConfig::from_storage(&deps.storage);
         let constants = config.constants().unwrap();
@@ -1178,10 +1192,6 @@ mod tests {
         assert_eq!(constants.admin, HumanAddr("admin".to_string()));
         assert_eq!(constants.symbol, "SECSEC".to_string());
         assert_eq!(constants.decimals, 8);
-        assert_eq!(
-            constants.prng_seed,
-            sha_256("lolz fun yay".to_owned().as_bytes())
-        );
         assert_eq!(constants.total_supply_is_public, true);
     }
 
@@ -1195,6 +1205,8 @@ mod tests {
             "Init failed: {}",
             init_result.err().unwrap()
         );
+
+        set_initial_deposit_for(&mut deps, "bob", 5000);
 
         let handle_msg = HandleMsg::Transfer {
             recipient: HumanAddr("alice".to_string()),
@@ -1234,6 +1246,8 @@ mod tests {
             "Init failed: {}",
             init_result.err().unwrap()
         );
+
+        set_initial_deposit_for(&mut deps, "bob", 5000);
 
         let handle_msg = HandleMsg::RegisterReceive {
             code_hash: "this_is_a_hash_of_a_code".to_string(),
@@ -1380,6 +1394,8 @@ mod tests {
             init_result.err().unwrap()
         );
 
+        set_initial_deposit_for(&mut deps, "bob", 5000);
+
         // Transfer before allowance
         let handle_msg = HandleMsg::TransferFrom {
             owner: HumanAddr("bob".to_string()),
@@ -1495,6 +1511,8 @@ mod tests {
             init_result.err().unwrap()
         );
 
+        set_initial_deposit_for(&mut deps, "bob", 5000);
+
         // Send before allowance
         let handle_msg = HandleMsg::SendFrom {
             owner: HumanAddr("bob".to_string()),
@@ -1605,6 +1623,8 @@ mod tests {
             "Init failed: {}",
             init_result.err().unwrap()
         );
+
+        set_initial_deposit_for(&mut deps, "bob", 5000);
 
         // Burn before allowance
         let handle_msg = HandleMsg::BurnFrom {
@@ -1870,6 +1890,8 @@ mod tests {
             init_result.err().unwrap()
         );
 
+        set_initial_deposit_for(&mut deps, "butler", 5000);
+
         let handle_msg = HandleMsg::Redeem {
             amount: Uint128(1000),
             denom: None,
@@ -1899,6 +1921,8 @@ mod tests {
             init_result.err().unwrap()
         );
 
+        set_initial_deposit_for(&mut deps, "lebron", 5000);
+        
         let handle_msg = HandleMsg::Deposit { padding: None };
         let handle_result = handle(
             &mut deps,
@@ -1927,7 +1951,6 @@ mod tests {
 
     #[test]
     fn test_handle_burn() {
-        let initial_amount: u128 = 5000;
         let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
@@ -1935,8 +1958,13 @@ mod tests {
             init_result.err().unwrap()
         );
 
-        let supply = ReadonlyConfig::from_storage(&deps.storage).total_supply();
+        //Config::from_storage(&mut deps.storage).set_total_supply(2000);
+
         let burn_amount: u128 = 100;
+        set_initial_deposit_for(&mut deps, "lebron", burn_amount);
+
+        let supply = ReadonlyConfig::from_storage(&deps.storage).total_supply();
+
         let handle_msg = HandleMsg::Burn {
             amount: Uint128(burn_amount),
             padding: None,
@@ -1954,7 +1982,6 @@ mod tests {
 
     #[test]
     fn test_handle_mint() {
-        let initial_amount: u128 = 5000;
         let (init_result, mut deps) = init_helper();
         assert!(
             init_result.is_ok(),
@@ -2040,6 +2067,8 @@ mod tests {
             "Init failed: {}",
             init_result.err().unwrap()
         );
+
+        set_initial_deposit_for(&mut deps, "lebron", 5000);
 
         let pause_msg = HandleMsg::SetContractStatus {
             level: ContractStatusLevel::StopAllButRedeems,
@@ -2308,6 +2337,8 @@ mod tests {
             _ => panic!("Unexpected result from handle"),
         };
 
+        set_initial_deposit_for(&mut deps, "giannis", 5000);
+        
         let query_balance_msg = QueryMsg::Balance {
             address: HumanAddr("giannis".to_string()),
             key: vk.0,
@@ -2338,25 +2369,19 @@ mod tests {
         let init_admin = HumanAddr("admin".to_string());
         let init_symbol = "SECSEC".to_string();
         let init_decimals = 8;
-        let init_config: InitConfig = from_binary(&Binary::from(
-            r#"{ "public_total_supply": true }"#.as_bytes(),
-        ))
-        .unwrap();
-        let init_supply = Uint128(5000);
 
         let mut deps = mock_dependencies(20, &[]);
         let env = mock_env("instantiator", &[]);
-        let init_msg = InitMsg {
+        let init_msg = LpTokenInitMsg {
             name: init_name.clone(),
-            admin: Some(init_admin.clone()),
+            admin: init_admin.clone(),
             symbol: init_symbol.clone(),
             decimals: init_decimals.clone(),
-            initial_balances: Some(vec![InitialBalance {
-                address: HumanAddr("giannis".to_string()),
-                amount: init_supply,
-            }]),
-            prng_seed: Binary::from("lolz fun yay".as_bytes()),
-            config: Some(init_config),
+            callback: Callback {
+                msg: to_binary("whatever".into()).unwrap(),
+                contract_addr: env.contract.address.clone(),
+                contract_code_hash: env.contract_code_hash.clone()
+            }
         };
         let init_result = init(&mut deps, env, init_msg);
         assert!(
@@ -2364,6 +2389,8 @@ mod tests {
             "Init failed: {}",
             init_result.err().unwrap()
         );
+
+        set_initial_deposit_for(&mut deps, "giannis", 5000);
 
         let query_msg = QueryMsg::TokenInfo {};
         let query_result = query(&deps, query_msg);
@@ -2504,6 +2531,8 @@ mod tests {
             init_result.err().unwrap()
         );
 
+        set_initial_deposit_for(&mut deps, "bob", 5000);
+
         let handle_msg = HandleMsg::SetViewingKey {
             key: "key".to_string(),
             padding: None,
@@ -2547,6 +2576,8 @@ mod tests {
             "Init failed: {}",
             init_result.err().unwrap()
         );
+
+        set_initial_deposit_for(&mut deps, "bob", 5000);
 
         let handle_msg = HandleMsg::SetViewingKey {
             key: "key".to_string(),
