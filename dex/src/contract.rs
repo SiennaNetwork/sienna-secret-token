@@ -129,6 +129,7 @@ fn add_liquidity<S: Storage, A: Api, Q: Querier>(
     deposit: TokenPairAmount,
     slippage: Option<Decimal>
 ) -> StdResult<HandleResponse> {
+    deposit.assert_sent_native_token_balance(&env)?;
 
     let config = load_config(&deps)?;
 
@@ -168,10 +169,6 @@ fn add_liquidity<S: Storage, A: Api, Q: Querier>(
                 );
             },
             TokenType::NativeToken { .. } => {
-                // TODO: shouldn't we verify that funds have actually been sent via env.message.sent_funds?
-                // I don't think anything is stopping somebody from calling this method, without actually providing
-                // any amount of SCRT?
-
                 // If the asset is native token, balance is already increased.
                 // To calculate properly we should subtract user deposit from the pool.
                 pool_balances[i] = (pool_balances[i] - amount)?;
@@ -343,6 +340,8 @@ fn swap<S: Storage, A: Api, Q: Querier>(
     env: Env,
     offer: TokenTypeAmount
 ) -> StdResult<HandleResponse> {
+    offer.assert_sent_native_token_balance(&env)?;
+
     let mut config = load_config(deps)?;
 
     let (return_amount, spread_amount, commission_amount) = do_swap(deps, &mut config, &offer, false)?;

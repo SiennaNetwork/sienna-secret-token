@@ -1,8 +1,8 @@
 use std::fmt;
 
 use cosmwasm_std::{
-    Api, CanonicalAddr, HumanAddr, Querier, StdResult, 
-    Uint128, CosmosMsg, WasmMsg, BankMsg, Coin, to_binary
+    Api, CanonicalAddr, HumanAddr, Querier, StdResult, Env,
+    Uint128, CosmosMsg, WasmMsg, BankMsg, Coin, to_binary, StdError
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Deserializer, Serializer};
@@ -193,6 +193,29 @@ impl TokenType {
             }
         }
     }
+
+    pub(crate) fn assert_sent_native_token_balance(&self, env: &Env, amount: Uint128) -> StdResult<()> {
+        if let TokenType::NativeToken { denom } = &self {
+            return match env.message.sent_funds.iter().find(|x| x.denom == *denom) {
+                Some(coin) => {
+                    if amount == coin.amount {
+                        Ok(())
+                    } else {
+                        Err(StdError::generic_err("Native token balance missmatch between the argument and the transferred"))
+                    }
+                }
+                None => {
+                    if amount.is_zero() {
+                        Ok(())
+                    } else {
+                        Err(StdError::generic_err("Native token balance missmatch between the argument and the transferred"))
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl TokenTypeStored {
@@ -208,6 +231,12 @@ impl TokenTypeStored {
                     denom
                 }
         })
+    }
+}
+
+impl TokenTypeAmount {
+    pub fn assert_sent_native_token_balance(&self, env: &Env) -> StdResult<()> {
+        self.token.assert_sent_native_token_balance(env, self.amount)
     }
 }
 
@@ -246,6 +275,15 @@ impl TokenPair {
         }
 
         None
+    }
+}
+
+impl TokenPairAmount {
+    pub fn assert_sent_native_token_balance(&self, env: &Env) -> StdResult<()> {
+        self.pair.0.assert_sent_native_token_balance(env, self.amount_0)?;
+        self.pair.1.assert_sent_native_token_balance(env, self.amount_1)?;
+
+        Ok(())
     }
 }
 
