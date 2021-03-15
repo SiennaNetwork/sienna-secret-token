@@ -15,6 +15,8 @@ use crate::msg::{HandleMsg, QueryMsg, QueryMsgResponse, SwapSimulationResponse};
 use crate::state::{Config, store_config, load_config};
 use crate::decimal_math;
 
+type SwapResult = StdResult<(Uint128, Uint128, Uint128)>;
+
 /// Pad handle responses and log attributes to blocks
 /// of 256 bytes to prevent leaking info based on response size
 const BLOCK_SIZE: usize = 256;
@@ -341,27 +343,10 @@ fn swap<S: Storage, A: Api, Q: Querier>(
     env: Env,
     offer: TokenTypeAmount
 ) -> StdResult<HandleResponse> {
-    let mut config = load_config(&deps)?;
+    let mut config = load_config(deps)?;
 
-    if !config.pair.contains(&offer.token) {
-        return Err(StdError::generic_err(format!("The supplied token {}, is not managed by this contract.", offer.token)));
-    }
-    let balances = config.pair.query_balances(&deps.querier, env.contract.address.clone(), config.viewing_key.0.clone())?;
-    let token_index = config.pair.get_token_index(&offer.token).unwrap(); //Safe, because we checked above for existence
-    
-    let amount = U256::from(balances[token_index].u128()).checked_sub(U256::from(offer.amount.u128())).ok_or_else(|| {
-        StdError::generic_err("The swap amount offered is larger than pool amount.")
-    })?;
-
-    config.pool_cache[token_index] = config.pool_cache[token_index].add(offer.amount);
-
-    store_config(deps, &config)?;
-
-    let (return_amount, spread_amount, commission_amount) = compute_swap(
-        Uint128(amount.low_u128()),
-        balances[token_index ^ 1],
-        offer.amount
-    )?;
+    let (return_amount, spread_amount, commission_amount) = do_swap(deps, &mut config, &offer, false)?;
+    store_config(deps, &config)?; // Save in order to update the pool_cache
 
     Ok(HandleResponse{
         messages: vec![
@@ -412,24 +397,10 @@ fn query_liquidity(querier: &impl Querier, lp_token_info: &ContractInfo) -> StdR
 
 fn swap_simulation<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
-    config: Config,
+    mut config: Config,
     offer: TokenTypeAmount
 ) -> QueryResult {
-    if !config.pair.contains(&offer.token) {
-        return Err(StdError::generic_err(format!("The supplied token {}, is not managed by this contract.", offer.token)));
-    }
-
-    let pool_balance = offer.token.query_balance(&deps.querier, config.contract_addr.clone(), config.viewing_key.0.clone())?;
-
-    let amount = U256::from(pool_balance.u128()).checked_sub(U256::from(offer.amount.u128())).ok_or_else(|| {
-        StdError::generic_err("The swap amount offered is larger than pool amount.")
-    })?;
-
-    let (return_amount, spread_amount, commission_amount) = compute_swap(
-        Uint128(amount.low_u128()),
-        pool_balance,
-        offer.amount
-    )?;
+    let (return_amount, spread_amount, commission_amount) = do_swap(deps, &mut config, &offer, true)?;
 
     Ok(to_binary(
         &SwapSimulationResponse{
@@ -496,12 +467,40 @@ fn try_register_custom_token(
     Ok(())
 }
 
+fn do_swap<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    config: &mut Config,
+    offer: &TokenTypeAmount,
+    is_simulation: bool
+) -> SwapResult {
+    if !config.pair.contains(&offer.token) {
+        return Err(StdError::generic_err(format!("The supplied token {}, is not managed by this contract.", offer.token)));
+    }
+
+    let balances = config.pair.query_balances(&deps.querier, config.contract_addr.clone(), config.viewing_key.0.clone())?;
+    let token_index = config.pair.get_token_index(&offer.token).unwrap(); //Safe because we checked above for existence
+    
+    let amount = U256::from(balances[token_index].u128()).checked_sub(U256::from(offer.amount.u128())).ok_or_else(|| {
+        StdError::generic_err("The swap amount offered is larger than pool amount.")
+    })?;
+
+    if !is_simulation {
+        config.pool_cache[token_index] = config.pool_cache[token_index].add(offer.amount);
+    }
+
+    compute_swap(
+        Uint128(amount.low_u128()),
+        balances[token_index ^ 1],
+        offer.amount
+    )
+}
+
 // Copied from https://github.com/enigmampc/SecretSwap/blob/ffd72d1c94096ac3a78aaf8e576f22584f49fe7a/contracts/secretswap_pair/src/contract.rs#L768
 fn compute_swap(
     offer_pool: Uint128,
     ask_pool: Uint128,
     offer_amount: Uint128
-) -> StdResult<(Uint128, Uint128, Uint128)> {
+) -> SwapResult {
     // offer => ask
     let offer_pool = Some(U256::from(offer_pool.u128()));
     let ask_pool = Some(U256::from(ask_pool.u128()));
