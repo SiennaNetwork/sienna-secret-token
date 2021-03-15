@@ -346,22 +346,20 @@ fn swap<S: Storage, A: Api, Q: Querier>(
     if !config.pair.contains(&offer.token) {
         return Err(StdError::generic_err(format!("The supplied token {}, is not managed by this contract.", offer.token)));
     }
-
-    let pool_balance = offer.token.query_balance(&deps.querier, config.contract_addr.clone(), config.viewing_key.0.clone())?;
+    let balances = config.pair.query_balances(&deps.querier, env.contract.address.clone(), config.viewing_key.0.clone())?;
+    let token_index = config.pair.get_token_index(&offer.token).unwrap(); //Safe, because we checked above for existence
     
-    let amount = U256::from(pool_balance.u128()).checked_sub(U256::from(offer.amount.u128())).ok_or_else(|| {
+    let amount = U256::from(balances[token_index].u128()).checked_sub(U256::from(offer.amount.u128())).ok_or_else(|| {
         StdError::generic_err("The swap amount offered is larger than pool amount.")
     })?;
 
-    let token_index = config.pair.get_token_index(&offer.token).unwrap(); //Safe, because we checked above for existence
-    // TODO: not sure why add instead of assign
     config.pool_cache[token_index] = config.pool_cache[token_index].add(offer.amount);
 
     store_config(deps, &config)?;
 
     let (return_amount, spread_amount, commission_amount) = compute_swap(
         Uint128(amount.low_u128()),
-        pool_balance,
+        balances[token_index ^ 1],
         offer.amount
     )?;
 
