@@ -7,14 +7,17 @@ use amm_lp_token::msg::{HandleAnswer, HandleMsg, QueryAnswer, QueryMsg};
 use amm_shared::LpTokenInitMsg;
 
 fn main() {
-    let mut out_dir = current_dir().unwrap();
+    let ref mut out_dir = current_dir().unwrap();
+
+    out_dir.push("amm-lp-token");
     out_dir.push("schema");
+
     create_dir_all(&out_dir).unwrap();
     remove_schemas(&out_dir).unwrap();
 
-    export_schema(&schema_for!(LpTokenInitMsg), &out_dir);
-    export_schema(&schema_for!(HandleMsg), &out_dir);
-    export_schema(&schema_for!(HandleAnswer), &out_dir);
-    export_schema(&schema_for!(QueryMsg), &out_dir);
-    export_schema(&schema_for!(QueryAnswer), &out_dir);
+    export_schema(&schema_for!(LpTokenInitMsg), out_dir);
+    export_schema(&schema_for!(HandleMsg), out_dir);
+    export_schema(&schema_for!(HandleAnswer), out_dir);
+    export_schema(&schema_for!(QueryMsg), out_dir);
+    export_schema(&schema_for!(QueryAnswer), out_dir);
 }

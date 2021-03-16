@@ -3,12 +3,35 @@
   "title": "InitMsg",
   "type": "object",
   "required": [
-    "count"
+    "lp_token_contract",
+    "pair_contract"
   ],
   "properties": {
-    "count": {
-      "type": "integer",
-      "format": "int32"
+    "lp_token_contract": {
+      "$ref": "#/definitions/ContractInstantiationInfo"
+    },
+    "pair_contract": {
+      "$ref": "#/definitions/ContractInstantiationInfo"
+    }
+  },
+  "definitions": {
+    "ContractInstantiationInfo": {
+      "description": "Info used to instantiate a contract",
+      "type": "object",
+      "required": [
+        "code_hash",
+        "id"
+      ],
+      "properties": {
+        "code_hash": {
+          "type": "string"
+        },
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
     }
   }
 }

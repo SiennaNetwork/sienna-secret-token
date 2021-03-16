@@ -1,47 +1,58 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "QueryMsg",
+  "title": "QueryMsgResponse",
   "anyOf": [
     {
       "type": "object",
       "required": [
-        "get_exchange_pair"
+        "pair_info"
       ],
       "properties": {
-        "get_exchange_pair": {
-          "type": "object",
-          "required": [
-            "exchange_addr"
-          ],
-          "properties": {
-            "exchange_addr": {
-              "$ref": "#/definitions/HumanAddr"
-            }
-          }
+        "pair_info": {
+          "$ref": "#/definitions/TokenPair"
         }
       }
     },
     {
       "type": "object",
       "required": [
-        "get_exchange_address"
+        "factory_info"
       ],
       "properties": {
-        "get_exchange_address": {
-          "type": "object",
-          "required": [
-            "pair"
-          ],
-          "properties": {
-            "pair": {
-              "$ref": "#/definitions/TokenPair"
-            }
-          }
+        "factory_info": {
+          "$ref": "#/definitions/ContractInfo"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "pool"
+      ],
+      "properties": {
+        "pool": {
+          "$ref": "#/definitions/TokenPairAmount"
         }
       }
     }
   ],
   "definitions": {
+    "ContractInfo": {
+      "description": "Code hash and address of a contract.",
+      "type": "object",
+      "required": [
+        "address",
+        "code_hash"
+      ],
+      "properties": {
+        "address": {
+          "$ref": "#/definitions/HumanAddr"
+        },
+        "code_hash": {
+          "type": "string"
+        }
+      }
+    },
     "HumanAddr": {
       "type": "string"
     },
@@ -57,6 +68,25 @@
       ],
       "maxItems": 2,
       "minItems": 2
+    },
+    "TokenPairAmount": {
+      "type": "object",
+      "required": [
+        "amount_0",
+        "amount_1",
+        "pair"
+      ],
+      "properties": {
+        "amount_0": {
+          "$ref": "#/definitions/Uint128"
+        },
+        "amount_1": {
+          "$ref": "#/definitions/Uint128"
+        },
+        "pair": {
+          "$ref": "#/definitions/TokenPair"
+        }
+      }
     },
     "TokenType": {
       "anyOf": [
@@ -103,6 +133,9 @@
           }
         }
       ]
+    },
+    "Uint128": {
+      "type": "string"
     }
   }
 }

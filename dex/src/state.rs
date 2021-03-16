@@ -1,6 +1,5 @@
 use cosmwasm_std::{Api, CanonicalAddr, Extern, HumanAddr, Querier, StdResult, Storage, Uint128};
 use serde::{Serialize,Deserialize};
-use schemars::JsonSchema;
 
 use amm_shared::{TokenPair, TokenPairStored, ContractInfo, ContractInfoStored};
 use utils::storage::{load, save};
@@ -8,8 +7,8 @@ use utils::viewing_key::ViewingKey;
 
 const CONFIG_KEY: &[u8] = b"config"; 
 
-#[derive(Serialize, Deserialize, JsonSchema, PartialEq, Debug)]
-pub struct Config {
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub(crate) struct Config {
     pub factory_info: ContractInfo,
     pub lp_token_info: ContractInfo,
     pub pair: TokenPair,
@@ -37,7 +36,7 @@ struct ConfigStored {
     pub pool_cache: [Uint128; 2]
 }
 
-pub fn store_config<S: Storage, A: Api, Q: Querier>(
+pub(crate) fn store_config<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     config: &Config
 ) -> StdResult<()> {
@@ -53,7 +52,7 @@ pub fn store_config<S: Storage, A: Api, Q: Querier>(
     save(&mut deps.storage, CONFIG_KEY, &stored)
 }
 
-pub fn load_config<S: Storage, A: Api, Q: Querier>(
+pub(crate) fn load_config<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>
 ) -> StdResult<Config> {
     let result: ConfigStored = load(&deps.storage, CONFIG_KEY)?;

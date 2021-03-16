@@ -1,4 +1,4 @@
-use schemars::JsonSchema;
+
 use serde::{Deserialize, Serialize};
 use cosmwasm_std::{CanonicalAddr, HumanAddr, Storage, Querier, Api, StdResult, Extern, ReadonlyStorage, StdError};
 use utils::storage::{save, load};
@@ -6,15 +6,15 @@ use amm_shared::{TokenPair, TokenPairStored, TokenTypeStored, ContractInstantiat
 
 const CONFIG_KEY: &[u8] = b"config";
 
-#[derive(Serialize, Deserialize, JsonSchema)]
-pub struct Config {
+#[derive(Serialize, Deserialize)]
+pub(crate) struct Config {
     pub lp_token_contract: ContractInstantiationInfo,
     pub pair_contract: ContractInstantiationInfo,
 }
 
 /// Represents the address of an exchange and the pair that it manages
-#[derive(Serialize, Deserialize, JsonSchema, PartialEq, Debug, Clone)]
-pub struct Exchange {
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub(crate) struct Exchange {
     /// The pair that the contract manages.
     pub pair: TokenPair,
     /// Address of the contract that manages the exchange.
@@ -27,7 +27,7 @@ pub struct Exchange {
 ///
 /// * `storage` - a mutable reference to the storage this item should go to
 /// * `config` - a reference to a Config struct
-pub fn save_config(storage: &mut impl Storage, config: &Config) -> StdResult<()> {
+pub(crate) fn save_config(storage: &mut impl Storage, config: &Config) -> StdResult<()> {
     save(storage, CONFIG_KEY, config)
 }
 
@@ -36,13 +36,13 @@ pub fn save_config(storage: &mut impl Storage, config: &Config) -> StdResult<()>
 /// # Arguments
 ///
 /// * `storage` - a reference to the storage this item should go to
-pub fn load_config(storage: &impl ReadonlyStorage) -> StdResult<Config> {
+pub(crate) fn load_config(storage: &impl ReadonlyStorage) -> StdResult<Config> {
     load(storage, CONFIG_KEY)
 }
 
 /// Returns StdResult<bool> indicating whether a pair has been created before or not.
 /// Note that TokenPair(A, B) and TokenPair(B, A) is considered to be same.
-pub fn pair_exists<S: Storage, A: Api, Q: Querier>(
+pub(crate) fn pair_exists<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     pair: &TokenPair
 ) -> StdResult<bool> {
@@ -58,7 +58,7 @@ pub fn pair_exists<S: Storage, A: Api, Q: Querier>(
 
 /// Stores information about an exchange contract. Returns an `StdError` if the exchange
 /// already exists or if something else goes wrong.
-pub fn store_exchange<S: Storage, A: Api, Q: Querier>(
+pub(crate) fn store_exchange<S: Storage, A: Api, Q: Querier>(
     deps: &mut Extern<S, A, Q>,
     exchange: &Exchange
 ) -> StdResult<()> {
@@ -87,7 +87,7 @@ pub fn store_exchange<S: Storage, A: Api, Q: Querier>(
 }
 
 /// Get the exchange pair that the given contract address manages.
-pub fn get_pair_for_address<S: Storage, A: Api, Q: Querier>(
+pub(crate) fn get_pair_for_address<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     exchange_addr: &HumanAddr
 ) -> StdResult<TokenPair> {
@@ -98,7 +98,7 @@ pub fn get_pair_for_address<S: Storage, A: Api, Q: Querier>(
 }
 
 /// Get the address of an exchange contract which manages the given pair.
-pub fn get_address_for_pair<S: Storage, A: Api, Q: Querier>(
+pub(crate) fn get_address_for_pair<S: Storage, A: Api, Q: Querier>(
     deps: &Extern<S, A, Q>,
     pair: &TokenPair
 ) -> StdResult<CanonicalAddr> {

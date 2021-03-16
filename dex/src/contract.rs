@@ -62,8 +62,7 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
         ),
         callback_code_hash: msg.lp_token_contract.code_hash.clone(),
     }));
-
-
+    
     // Execute the HandleMsg::RegisterExchange method of
     // the factory contract in order to register this address
     messages.push(
