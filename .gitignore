@@ -5,3 +5,6 @@ target
 *.profraw
 .env
 node_modules
+.~*
+yarn-error.log
+.idea
