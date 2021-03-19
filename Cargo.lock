@@ -389,7 +389,7 @@ dependencies = [
 
 [[package]]
 name = "fadroma"
-version = "2.1.2"
+version = "1.0.0-rc1"
 
 [[package]]
 name = "fake-simd"
