@@ -57,6 +57,10 @@ fn create_exchange<S: Storage, A: Api, Q: Querier>(
     pair: TokenPair
 ) -> StdResult<HandleResponse> {
 
+    if pair.0 == pair.1 {
+        return Err(StdError::generic_err("Cannot create an exchange with the same token."));
+    }
+
     if pair_exists(deps, &pair)? {
         return Err(StdError::generic_err("Pair already exists"));
     }
@@ -192,6 +196,67 @@ mod tests {
 
         assert_eq!(lp_token_contract, config.lp_token_contract);
         assert_eq!(pair_contract, config.pair_contract);
+
+        Ok(())
+    }
+
+    #[test]
+    fn create_exchange_for_the_same_tokens_returns_error() -> StdResult<()> {
+        let ref mut deps = dependencies();
+
+        let pair = TokenPair (
+            TokenType::CustomToken {
+                contract_addr: HumanAddr("token_addr".into()),
+                token_code_hash: "13123adasd".into()
+            },
+            TokenType::CustomToken {
+                contract_addr: HumanAddr("token_addr".into()),
+                token_code_hash: "13123adasd".into()
+            },
+        );
+
+        let result = create_exchange(deps, mock_env("sender", &[]), pair);
+
+        let error: StdError = result.unwrap_err();
+
+        let result = match error {
+            StdError::GenericErr { msg, .. } => {
+                if msg.as_str() == "Cannot create an exchange with the same token." {
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false
+        };
+
+        assert!(result);
+
+        let pair = TokenPair (
+            TokenType::NativeToken {
+                denom: "test1".into()
+            },
+            TokenType::NativeToken {
+                denom: "test1".into()
+            },
+        );
+
+        let result = create_exchange(deps, mock_env("sender", &[]), pair);
+
+        let error: StdError = result.unwrap_err();
+
+        let result = match error {
+            StdError::GenericErr { msg, .. } => {
+                if msg.as_str() == "Cannot create an exchange with the same token." {
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false
+        };
+
+        assert!(result);
 
         Ok(())
     }

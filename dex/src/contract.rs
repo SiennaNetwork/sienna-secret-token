@@ -29,6 +29,10 @@ pub fn init<S: Storage, A: Api, Q: Querier>(
     msg: ExchangeInitMsg,
 ) -> StdResult<InitResponse> {
 
+    if msg.pair.0 == msg.pair.1 {
+        panic!("Trying to create an exchange with the same token.");
+    }
+
     let mut messages = vec![];
 
     let viewing_key = ViewingKey::new(&env, b"YfhL28JtDN", b"JdjhIh3KhM");
