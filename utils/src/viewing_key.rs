@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{Env, Binary};
 
-use secret_toolkit::crypto::{sha_256, Prng};
+use crate::rand::{sha_256, Prng};
 
 const VIEWING_KEY_PREFIX: &str = "api_key_";
 
