@@ -1093,12 +1093,12 @@ checksum = "f7fe0bb3479651439c9112f72b6c505038574c9fbb575ed1bf3b797fa39dd564"
 name = "utils"
 version = "0.1.0"
 dependencies = [
- "bincode2",
  "cosmwasm-std",
  "cosmwasm-storage",
  "rand_chacha 0.2.2",
  "rand_core 0.5.1",
  "schemars",
+ "secret-toolkit 0.1.0 (git+https://github.com/enigmampc/secret-toolkit)",
  "serde",
  "sha2 0.9.3",
  "snafu",

@@ -1,6 +1,6 @@
 use std::any::type_name;
 use serde::{Serialize, de::DeserializeOwned};
-use bincode2::{serialize, deserialize};
+use secret_toolkit::serialization::{Bincode2, Serde};
 use cosmwasm_std::{ReadonlyStorage, StdError, StdResult, Storage};
 
 /// Returns StdResult<()> resulting from saving an item to storage
@@ -11,13 +11,7 @@ use cosmwasm_std::{ReadonlyStorage, StdError, StdResult, Storage};
 /// * `key` - a byte slice representing the key to access the stored item
 /// * `value` - a reference to the item to store
 pub fn save<T: Serialize, S: Storage>(storage: &mut S, key: &[u8], value: &T) -> StdResult<()> {
-    let serialized = serialize(value);
-
-    if serialized.is_err() {
-        return Err(StdError::generic_err("Error serializing"));
-    }
-
-    storage.set(key, serialized.unwrap().as_slice());
+    storage.set(key, &Bincode2::serialize(value)?);
     Ok(())
 }
 
@@ -39,19 +33,13 @@ pub fn remove<S: Storage>(storage: &mut S, key: &[u8]) {
 /// * `storage` - a reference to the storage this item is in
 /// * `key` - a byte slice representing the key that accesses the stored item
 pub fn load<T: DeserializeOwned, S: ReadonlyStorage>(storage: &S, key: &[u8]) -> StdResult<T> {
-    let value = &storage
-        .get(key)
-        .ok_or_else(|| StdError::not_found(type_name::<T>()))?;
-
-    let result = deserialize(value);
-
-    if result.is_err() {
-        return Err(StdError::generic_err("Error deserializing"));
-    }
-
-    Ok(result.unwrap())
+    Bincode2::deserialize(
+        &storage
+            .get(key)
+            .ok_or_else(|| StdError::not_found(type_name::<T>()))?,
+    )
 }
-/*
+
 /// Returns StdResult<Option<T>> from retrieving the item with the specified key.
 /// Returns Ok(None) if there is no item with that key
 ///
@@ -68,4 +56,3 @@ pub fn may_load<T: DeserializeOwned, S: ReadonlyStorage>(
         None => Ok(None),
     }
 }
-*/
